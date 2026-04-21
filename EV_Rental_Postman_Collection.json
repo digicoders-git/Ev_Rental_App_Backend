@@ -1,0 +1,112 @@
+{
+	"info": {
+		"_postman_id": "ev-rental-api-collection-v6",
+		"name": "EV Rental API V6",
+		"description": "Comprehensive API Collection with Booking System",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Auth",
+			"item": [
+				{ "name": "Send OTP", "request": { "method": "POST", "body": { "mode": "raw", "raw": "{\"mobile\": \"9876543210\"}", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{baseUrl}}/api/auth/send-otp", "host": ["{{baseUrl}}"], "path": ["api", "auth", "send-otp"] } } },
+				{ "name": "Verify OTP", "event": [{ "listen": "test", "script": { "exec": ["var jsonData = pm.response.json(); if (jsonData.token) { pm.environment.set(\"token\", jsonData.token); }"], "type": "text/javascript" } }], "request": { "method": "POST", "body": { "mode": "raw", "raw": "{\"mobile\": \"9876543210\", \"otp\": \"123456\"}", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{baseUrl}}/api/auth/verify-otp", "host": ["{{baseUrl}}"], "path": ["api", "auth", "verify-otp"] } } }
+			]
+		},
+		{
+			"name": "User Profile",
+			"item": [
+				{ "name": "Get Profile", "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] }, "method": "GET", "url": { "raw": "{{baseUrl}}/api/user/profile", "host": ["{{baseUrl}}"], "path": ["api", "user", "profile"] } } },
+				{ "name": "Update Profile", "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] }, "method": "PUT", "body": { "mode": "raw", "raw": "{\"name\": \"John Doe\", \"email\": \"john@example.com\"}", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{baseUrl}}/api/user/profile", "host": ["{{baseUrl}}"], "path": ["api", "user", "profile"] } } }
+			]
+		},
+		{
+			"name": "Vehicles",
+			"item": [
+				{ "name": "Get All", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/vehicles", "host": ["{{baseUrl}}"], "path": ["api", "vehicles"] } } },
+				{ "name": "Get Single", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/vehicles/:id", "host": ["{{baseUrl}}"], "path": ["api", "vehicles", ":id"], "variable": [{ "key": "id", "value": "" }] } } },
+				{
+					"name": "Create Vehicle",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+						"method": "POST",
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "vehicle_name", "value": "Ola S1 Pro", "type": "text" },
+								{ "key": "brand", "value": "Ola Electric", "type": "text" },
+								{ "key": "vehicle_type", "value": "scooter", "type": "text" },
+								{ "key": "price_per_day", "value": "500", "type": "text" },
+								{ "key": "thumbnail_image", "type": "file", "src": [] }
+							]
+						},
+						"url": { "raw": "{{baseUrl}}/api/vehicles", "host": ["{{baseUrl}}"], "path": ["api", "vehicles"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "Offers",
+			"item": [
+				{ "name": "Get All Offers", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/offers", "host": ["{{baseUrl}}"], "path": ["api", "offers"] } } }
+			]
+		},
+		{
+			"name": "Franchise",
+			"item": [
+				{ "name": "Submit Enquiry", "request": { "method": "POST", "body": { "mode": "raw", "raw": "{\n  \"full_name\": \"John Doe\",\n  \"phone_number\": \"9876543210\",\n  \"email\": \"john@example.com\",\n  \"city\": \"Lucknow\",\n  \"state\": \"Uttar Pradesh\",\n  \"investment_budget\": \"5-10 Lakhs\",\n  \"message\": \"Interested in opening a franchise.\"\n}", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{baseUrl}}/api/franchise-enquiry", "host": ["{{baseUrl}}"], "path": ["api", "franchise-enquiry"] } } }
+			]
+		},
+		{
+			"name": "Rental Plans",
+			"item": [
+				{ "name": "Get All Plans", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/plans", "host": ["{{baseUrl}}"], "path": ["api", "plans"] } } }
+			]
+		},
+		{
+			"name": "Bookings",
+			"item": [
+				{ "name": "My Bookings", "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] }, "method": "GET", "url": { "raw": "{{baseUrl}}/api/bookings/my", "host": ["{{baseUrl}}"], "path": ["api", "bookings", "my"] } } },
+				{ "name": "Get Single Booking", "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] }, "method": "GET", "url": { "raw": "{{baseUrl}}/api/bookings/:id", "host": ["{{baseUrl}}"], "path": ["api", "bookings", ":id"], "variable": [{ "key": "id", "value": "" }] } } },
+				{
+					"name": "Create Booking",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"vehicle\": \"VEHICLE_MONGO_ID\",\n  \"plan\": \"PLAN_MONGO_ID\",\n  \"start_date\": \"2026-05-01T10:00:00Z\",\n  \"end_date\": \"2026-05-02T10:00:00Z\",\n  \"pickup_location\": \"Lucknow Station\",\n  \"drop_location\": \"Airport Terminal 1\",\n  \"payment_method\": \"online\",\n  \"total_amount\": 1200,\n  \"discount_amount\": 100\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{baseUrl}}/api/bookings", "host": ["{{baseUrl}}"], "path": ["api", "bookings"] }
+					}
+				},
+				{
+					"name": "All Bookings (Admin)",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+						"method": "GET",
+						"url": { "raw": "{{baseUrl}}/api/bookings", "host": ["{{baseUrl}}"], "path": ["api", "bookings"] }
+					}
+				},
+				{
+					"name": "Update Booking Status (Admin)",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+						"method": "PATCH",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"booking_status\": \"confirmed\",\n  \"payment_status\": \"paid\",\n  \"transaction_id\": \"TXN987654\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{baseUrl}}/api/bookings/:id/status", "host": ["{{baseUrl}}"], "path": ["api", "bookings", ":id", "status"], "variable": [{ "key": "id", "value": "" }] }
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{ "key": "baseUrl", "value": "http://localhost:5000", "type": "string" },
+		{ "key": "token", "value": "", "type": "string" }
+	]
+}

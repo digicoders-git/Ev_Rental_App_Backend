@@ -496,7 +496,7 @@ Lists all bookings for vehicles belonging to the logged-in franchise.
 *Requires Header: `Authorization: Bearer <token>`*
 
 ### A. Submit KYC Documents
-Uploads Aadhar and Driving License documents for verification. Use `multipart/form-data`.
+Uploads Aadhar, DL, and User Photo for verification. Use `multipart/form-data`.
 - **URL**: `/api/kyc/submit`
 - **Method**: `POST`
 - **Body (form-data)**:
@@ -509,6 +509,7 @@ Uploads Aadhar and Driving License documents for verification. Use `multipart/fo
 | `drivingLicenseNumber`| Text | DL number |
 | `drivingLicenseFront` | File | Front side of Driving License |
 | `drivingLicenseBack` | File | Back side of Driving License |
+| `userPhoto` | File | **(Mandatory)** User's own photo / selfie |
 
 ### B. Get My KYC Status
 Checks the current verification status of the user's documents.
@@ -528,7 +529,7 @@ Lists all submitted KYC documents for review.
 - **Method**: `GET`
 - **Auth**: Admin only
 
-### D. Update KYC Status (Admin)
+### E. Update KYC Status (Admin)
 Approves or Rejects a KYC submission. 
 **Full Flow**: On approval, the user's `isKycVerified` field becomes `true` and `credit_score` increases by 50 points.
 - **URL**: `/api/kyc/admin/status/:id`

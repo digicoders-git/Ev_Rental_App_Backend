@@ -32,9 +32,9 @@ exports.submitKYC = async (req, res) => {
         };
 
         // Handle File Uploads
-        if (!req.files || !req.files.aadharFront || !req.files.aadharBack || !req.files.drivingLicenseFront || !req.files.drivingLicenseBack) {
+        if (!req.files || !req.files.aadharFront || !req.files.aadharBack || !req.files.drivingLicenseFront || !req.files.drivingLicenseBack || !req.files.userPhoto) {
             if (!kyc) {
-                return res.status(400).json({ success: false, message: 'All 4 document images are required for first-time submission' });
+                return res.status(400).json({ success: false, message: 'All 5 document images (Aadhar F/B, DL F/B, User Photo) are required for first-time submission' });
             }
         }
 
@@ -54,6 +54,10 @@ exports.submitKYC = async (req, res) => {
             if (req.files.drivingLicenseBack) {
                 if (kyc) deleteFile(kyc.drivingLicenseBack);
                 kycData.drivingLicenseBack = `uploads/${req.files.drivingLicenseBack[0].filename}`;
+            }
+            if (req.files.userPhoto) {
+                if (kyc) deleteFile(kyc.userPhoto);
+                kycData.userPhoto = `uploads/${req.files.userPhoto[0].filename}`;
             }
         }
 

@@ -34,7 +34,7 @@ const franchiseEnquirySchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['new', 'contacted', 'interested', 'not_interested', 'converted'],
+        enum: ['new', 'contacted', 'interested', 'not_interested', 'converted', 'approved', 'rejected'],
         default: 'new'
     },
     notes: {

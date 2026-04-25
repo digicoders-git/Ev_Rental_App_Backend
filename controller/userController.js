@@ -22,7 +22,7 @@ exports.getProfile = async (req, res) => {
 // @access  Private
 exports.updateProfile = async (req, res) => {
     try {
-        const { name, email, mobile, password, role } = req.body;
+        const { name, email, mobile, city, bio } = req.body;
         
         const user = await User.findById(req.user.id);
 
@@ -30,30 +30,18 @@ exports.updateProfile = async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        user.name = name || user.name;
-        user.email = email || user.email;
-        user.mobile = mobile || user.mobile;
-        
-        if (role) {
-            user.role = role;
-        }
-        
-        if (password) {
-            user.password = password;
-        }
+        if (name) user.name = name;
+        if (email) user.email = email;
+        if (mobile) user.mobile = mobile;
+        if (city) user.city = city;
+        if (bio) user.bio = bio;
 
         const updatedUser = await user.save();
 
         res.status(200).json({
             success: true,
             message: 'Profile updated successfully',
-            data: {
-                id: updatedUser._id,
-                mobile: updatedUser.mobile,
-                name: updatedUser.name,
-                email: updatedUser.email,
-                role: updatedUser.role
-            }
+            data: updatedUser
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

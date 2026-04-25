@@ -20,8 +20,8 @@ app.use(express.json());
 app.use(cors());
 app.use(morgan('dev'));
 
-// Static folder for uploads (if needed)
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Static folder for uploads
+app.use('/uploads', express.static(path.resolve(__dirname, 'uploads')));
 
 // Basic route
 app.get('/', (req, res) => {
@@ -43,6 +43,8 @@ app.use('/api/reviews', require('./routes/reviewRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/content', require('./routes/contentRoutes'));
+app.use('/api/documents', require('./routes/documentRoutes'));
+app.use('/api/settings', require('./routes/settingRoutes'));
 app.use('/api', require('./routes/testRoutes'));
 
 

@@ -19,7 +19,7 @@ const contentSchema = new mongoose.Schema({
     type: {
         type: String,
         required: true,
-        enum: ['page', 'faq', 'banner', 'testimonial', 'contact'],
+        enum: ['page', 'faq', 'banner', 'testimonial', 'contact', 'announcement'],
         default: 'page'
     },
     category: {

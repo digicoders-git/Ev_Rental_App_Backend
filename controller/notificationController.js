@@ -112,3 +112,37 @@ exports.broadcastNotification = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// @desc    Get unique broadcast history (Admin only)
+// @route   GET /api/notifications/broadcast-history
+// @access  Private/Admin
+exports.getBroadcastHistory = async (req, res) => {
+    try {
+        const history = await Notification.aggregate([
+            { $match: { type: 'broadcast' } },
+            {
+                $group: {
+                    _id: { title: "$title", message: "$message" },
+                    createdAt: { $first: "$createdAt" },
+                    recipient_count: { $sum: 1 }
+                }
+            },
+            { $sort: { createdAt: -1 } },
+            { $limit: 20 }
+        ]);
+
+        const formatted = history.map(h => ({
+            _id: h._id.title + h.createdAt,
+            title: h._id.title,
+            message: h._id.message,
+            createdAt: h.createdAt,
+            recipient_count: h.recipient_count,
+            type: 'broadcast',
+            isRead: true
+        }));
+
+        res.status(200).json({ success: true, data: formatted });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

@@ -42,6 +42,10 @@ const rentalPlanSchema = new mongoose.Schema({
     },
     description: {
         type: String
+    },
+    features: {
+        type: [String],
+        default: []
     }
 }, {
     timestamps: true

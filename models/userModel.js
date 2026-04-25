@@ -53,6 +53,14 @@ const userSchema = new mongoose.Schema({
     block_reason: {
         type: String,
         default: ""
+    },
+    bio: {
+        type: String,
+        default: "Administrator of VoltRent EV platform."
+    },
+    city: {
+        type: String,
+        default: "Bangalore"
     }
 }, {
     timestamps: true

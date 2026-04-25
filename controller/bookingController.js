@@ -608,11 +608,16 @@ exports.approveBooking = async (req, res) => {
             return res.status(400).json({ success: false, message: `Cannot approve. Current status is ${booking.booking_status}` });
         }
 
-        // --- FULL FLOW: KYC CHECK ---
-        if (!booking.user.isKycVerified) {
+        // --- ROBUST KYC CHECK ---
+        const KYC = require('../models/kycModel');
+        const kycRecord = await KYC.findOne({ user: booking.user._id });
+
+        const isVerified = booking.user.isKycVerified || (kycRecord && kycRecord.status === 'approved');
+
+        if (!isVerified) {
             return res.status(400).json({ 
                 success: false, 
-                message: 'User KYC is not verified. Please approve KYC first.' 
+                message: 'User KYC is not verified. Please approve KYC documents first.' 
             });
         }
 
@@ -625,10 +630,18 @@ exports.approveBooking = async (req, res) => {
         }
 
         booking.booking_status = 'confirmed';
+        
+        // Sync the user model flag if it was missing but KYC was approved
+        if (!booking.user.isKycVerified && isVerified) {
+            booking.user.isKycVerified = true;
+            await booking.user.save();
+        }
+
         await booking.save();
 
         res.status(200).json({ success: true, message: 'Booking approved and confirmed', data: booking });
     } catch (error) {
+        console.error('Approval Error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 };

@@ -57,8 +57,21 @@ exports.getAllVehicles = async (req, res) => {
             query.franchise = franchiseId;
         }
 
-        const vehicles = await Vehicle.find(query).sort('-createdAt');
-        res.status(200).json({ success: true, count: vehicles.length, data: vehicles });
+        const Booking = require('../models/bookingModel');
+        const busyBookings = await Booking.find({ 
+            booking_status: { $in: ['confirmed', 'ongoing'] } 
+        }).select('vehicle');
+        const busyVehicleIds = busyBookings.map(b => b.vehicle ? b.vehicle.toString() : '');
+
+        const vehicles = await Vehicle.find(query).populate('franchise', 'store_name').sort('-createdAt');
+        
+        const data = vehicles.map(v => {
+            const vObj = v.toObject();
+            vObj.is_busy = busyVehicleIds.includes(v._id.toString());
+            return vObj;
+        });
+
+        res.status(200).json({ success: true, count: vehicles.length, data: data });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

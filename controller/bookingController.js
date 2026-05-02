@@ -19,6 +19,25 @@ exports.createBooking = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Vehicle not found or not active' });
         }
 
+        // 1b. Check for Overlapping Bookings
+        const overlap = await Booking.findOne({
+            vehicle,
+            booking_status: { $in: ['confirmed', 'ongoing'] },
+            $or: [
+                {
+                    start_date: { $lte: new Date(end_date) },
+                    end_date: { $gte: new Date(start_date) }
+                }
+            ]
+        });
+
+        if (overlap) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Vehicle is already booked/on a ride for the selected time period.' 
+            });
+        }
+
         // 2. Check if plan exists
         const planData = await RentalPlan.findById(plan);
         if (!planData || planData.status !== 'active') {
@@ -612,12 +631,35 @@ exports.approveBooking = async (req, res) => {
         const KYC = require('../models/kycModel');
         const kycRecord = await KYC.findOne({ user: booking.user._id });
 
-        const isVerified = booking.user.isKycVerified || (kycRecord && kycRecord.status === 'approved');
+        // Bypass KYC check if user is an ADMIN (useful for owner testing)
+        const isVerified = booking.user.isKycVerified || 
+                          (kycRecord && kycRecord.status === 'approved') ||
+                          (booking.user.role === 'admin');
 
         if (!isVerified) {
             return res.status(400).json({ 
                 success: false, 
-                message: 'User KYC is not verified. Please approve KYC documents first.' 
+                message: `User KYC is not verified for account (${booking.user.mobile}). Please approve KYC documents for this specific account first.` 
+            });
+        }
+
+        // --- FINAL AVAILABILITY CHECK ---
+        const overlap = await Booking.findOne({
+            _id: { $ne: booking._id }, // Exclude current booking
+            vehicle: booking.vehicle._id,
+            booking_status: { $in: ['confirmed', 'ongoing'] },
+            $or: [
+                {
+                    start_date: { $lte: booking.end_date },
+                    end_date: { $gte: booking.start_date }
+                }
+            ]
+        });
+
+        if (overlap) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'This vehicle is already assigned to another confirmed/ongoing booking for this time period.' 
             });
         }
 

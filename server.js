@@ -17,7 +17,29 @@ const app = express();
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+
+// CORS — allow Vercel frontend + localhost dev
+const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    /^https:\/\/.*\.vercel\.app$/,   // any Vercel preview/prod URL
+];
+app.use(cors({
+    origin: (origin, callback) => {
+        // allow requests with no origin (mobile apps, Postman, curl)
+        if (!origin) return callback(null, true);
+        const isAllowed =
+            allowedOrigins.some(o =>
+                typeof o === 'string' ? o === origin : o.test(origin)
+            );
+        if (isAllowed) return callback(null, true);
+        return callback(new Error(`CORS blocked: ${origin}`));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
 app.use(morgan('dev'));
 
 // Static folder for uploads

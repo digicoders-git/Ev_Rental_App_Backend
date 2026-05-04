@@ -22,6 +22,7 @@ app.use(express.json());
 const allowedOrigins = [
     'http://localhost:5173',
     'http://localhost:3000',
+    'https://ev-rental-app-admin-panel.vercel.app/login',
     /^https:\/\/.*\.vercel\.app$/,   // any Vercel preview/prod URL
 ];
 app.use(cors({

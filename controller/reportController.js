@@ -3,6 +3,7 @@ const User = require('../models/userModel');
 const Vehicle = require('../models/vehicleModel');
 const FranchiseStore = require('../models/franchiseStoreModel');
 const Support = require('../models/supportModel');
+const Document = require('../models/documentModel');
 
 // @desc    Get Overall Dashboard Stats (Admin)
 // @route   GET /api/reports/dashboard-stats
@@ -44,6 +45,11 @@ exports.getDashboardStats = async (req, res) => {
             },
             franchise: {
                 total_stores: await FranchiseStore.countDocuments(),
+            },
+            documents: {
+                total: await Document.countDocuments(),
+                expiring: await Document.countDocuments({ status: 'Expiring' }),
+                expired: await Document.countDocuments({ status: 'Expired' })
             }
         };
 

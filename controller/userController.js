@@ -186,7 +186,9 @@ exports.addRider = async (req, res) => {
 // @access  Private/Admin
 exports.getAllUsers = async (req, res) => {
     try {
-        const users = await User.find({}).sort({ createdAt: -1 });
+        // Explicitly filter for users with role 'user' and exclude any 'admin' accounts
+        const users = await User.find({ role: 'user' }).sort({ createdAt: -1 });
+        
         res.status(200).json({
             success: true,
             count: users.length,
@@ -236,6 +238,11 @@ exports.updateUserStatus = async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
+        // Prevent self-blocking - Using _id.toString() for both for absolute comparison
+        if (status === 'blocked' && user._id.toString() === req.user._id.toString()) {
+            return res.status(400).json({ success: false, message: 'You cannot block your own account' });
+        }
+
         if (status) user.status = status;
         if (role) user.role = role;
         if (credit_score !== undefined) user.credit_score = credit_score;
@@ -267,6 +274,11 @@ exports.deleteUser = async (req, res) => {
         const user = await User.findById(req.params.id);
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Prevent self-deletion - Using _id.toString() for both for absolute comparison
+        if (user._id.toString() === req.user._id.toString()) {
+            return res.status(400).json({ success: false, message: 'You cannot delete your own account' });
         }
 
         // Also delete KYC if exists (optional, could keep for records)

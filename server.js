@@ -52,6 +52,8 @@ app.get('/', (req, res) => {
 });
 
 // Routes
+console.log('Registering Category Routes...');
+app.use('/api/v-categories', require('./routes/categoryRoutes'));
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/user', require('./routes/userRoutes'));
 app.use('/api/vehicles', require('./routes/vehicleRoutes'));

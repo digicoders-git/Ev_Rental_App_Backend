@@ -180,6 +180,39 @@ Adds a new EV. Use `multipart/form-data`.
 - **Update**: `PUT /api/vehicles/:id` (Same form-data as Create)
 - **Delete**: `DELETE /api/vehicles/:id`
 
+---
+
+## 5.1 Vehicle Category APIs (Admin Only)
+*Manage dynamic categories for fleet organization.*
+
+### A. Create Category
+- **URL**: `/api/categories`
+- **Method**: `POST`
+- **Body (JSON)**:
+```json
+{
+  "name": "Luxury Scooters",
+  "description": "High-end electric scooters with extra range",
+  "image": "url_to_icon"
+}
+```
+
+### B. List Categories
+- **URL**: `/api/categories`
+- **Method**: `GET`
+- **Response**: List of all active categories.
+
+### C. Update Category
+- **URL**: `/api/categories/:id`
+- **Method**: `PUT`
+
+### D. Delete Category
+- **URL**: `/api/categories/:id`
+- **Method**: `DELETE`
+- **Logic**: Cannot delete if vehicles are currently assigned to this category.
+
+---
+
 ### D. Assign Vehicle to Franchise (Admin)
 Map a vehicle to a specific store.
 - **URL**: `/api/vehicles/:id/assign`
@@ -660,15 +693,18 @@ Admin can check the outstanding balance of any specific rider.
 - **Method**: `GET`
 - **Auth**: Admin only
 
-### C. Mark Payment Paid Manually (Admin)
-Allows admin to record a payment (full or partial) for a booking's outstanding balance.
+### C. Mark Payment Paid Manually (Admin / Installment)
+Allows admin to record a payment (full or partial/installment) for a booking's outstanding balance.
 - **URL**: `/api/bookings/:id/pay-manual`
 - **Method**: `POST`
 - **Auth**: Admin only
+- **Logic**: 
+  - If `amount` < `due_amount`, status becomes `partially_paid`.
+  - If `amount` >= `due_amount`, status becomes `paid`.
 - **Body (JSON)**:
 ```json
 {
-  "amount": 200, // Optional: defaults to full remaining due
+  "amount": 200, // Mandatory for installments
   "payment_method": "cash", // online, cash, wallet, other
   "transaction_id": "CASH_001"
 }

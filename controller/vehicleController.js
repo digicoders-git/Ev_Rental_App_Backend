@@ -63,7 +63,10 @@ exports.getAllVehicles = async (req, res) => {
         }).select('vehicle');
         const busyVehicleIds = busyBookings.map(b => b.vehicle ? b.vehicle.toString() : '');
 
-        const vehicles = await Vehicle.find(query).populate('franchise', 'store_name').sort('-createdAt');
+        const vehicles = await Vehicle.find(query)
+            .populate('franchise', 'store_name')
+            .populate('category', 'name')
+            .sort('-createdAt');
         
         const data = vehicles.map(v => {
             const vObj = v.toObject();
@@ -82,7 +85,7 @@ exports.getAllVehicles = async (req, res) => {
 // @access  Public
 exports.getVehicleById = async (req, res) => {
     try {
-        const vehicle = await Vehicle.findById(req.params.id);
+        const vehicle = await Vehicle.findById(req.params.id).populate('category', 'name');
         if (!vehicle) {
             return res.status(404).json({ success: false, message: 'Vehicle not found' });
         }

@@ -50,7 +50,7 @@ const bookingSchema = new mongoose.Schema({
     },
     payment_status: {
         type: String,
-        enum: ['pending', 'paid', 'failed'],
+        enum: ['pending', 'partially_paid', 'paid', 'failed'],
         default: 'pending'
     },
     payment_method: {
@@ -84,7 +84,13 @@ const bookingSchema = new mongoose.Schema({
         default: 0
     }
 }, {
-    timestamps: true
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+});
+
+bookingSchema.virtual('due_amount').get(function() {
+    return Math.max(0, this.grand_total - this.total_paid);
 });
 
 // Generate unique booking_id before saving

@@ -10,17 +10,73 @@ const Document = require('../models/documentModel');
 // @access  Private/Admin
 exports.getDashboardStats = async (req, res) => {
     try {
-        const totalRevenue = await Booking.aggregate([
-            { $match: { payment_status: 'paid' } },
-            { $group: { _id: null, total: { $sum: '$grand_total' } } }
+        // 1. Calculate Revenue Stats
+        const now = new Date();
+        const startOfWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const startOfMonth = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const startOfYear = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+
+        const revenueStats = await Booking.aggregate([
+            { $match: { payment_status: { $in: ['paid', 'partially_paid'] } } },
+            {
+                $group: {
+                    _id: null,
+                    total: { $sum: '$total_paid' },
+                    weekly: {
+                        $sum: {
+                            $cond: [{ $gte: ['$updatedAt', startOfWeek] }, '$total_paid', 0]
+                        }
+                    },
+                    monthly: {
+                        $sum: {
+                            $cond: [{ $gte: ['$updatedAt', startOfMonth] }, '$total_paid', 0]
+                        }
+                    },
+                    yearly: {
+                        $sum: {
+                            $cond: [{ $gte: ['$updatedAt', startOfYear] }, '$total_paid', 0]
+                        }
+                    }
+                }
+            }
         ]);
 
         const KYC = require('../models/kycModel');
         const ongoingBookings = await Booking.find({ booking_status: { $in: ['confirmed', 'ongoing'] } }).select('vehicle');
         const busyVehicleIds = ongoingBookings.map(b => b.vehicle.toString());
 
+        const categoryStats = await Vehicle.aggregate([
+            {
+                $group: {
+                    _id: '$category',
+                    count: { $sum: 1 }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'vehiclecategories',
+                    localField: '_id',
+                    foreignField: '_id',
+                    as: 'category_details'
+                }
+            },
+            { $unwind: { path: '$category_details', preserveNullAndEmptyArrays: true } },
+            {
+                $project: {
+                    name: { $ifNull: ['$category_details.name', 'Uncategorized'] },
+                    count: 1
+                }
+            }
+        ]);
+
         const stats = {
-            revenue: totalRevenue.length > 0 ? totalRevenue[0].total : 0,
+            revenue: {
+                total: revenueStats.length > 0 ? revenueStats[0].total : 0,
+                weekly: revenueStats.length > 0 ? revenueStats[0].weekly : 0,
+                monthly: revenueStats.length > 0 ? revenueStats[0].monthly : 0,
+                yearly: revenueStats.length > 0 ? revenueStats[0].yearly : 0,
+            },
+            categories: categoryStats,
             bookings: {
                 total: await Booking.countDocuments(),
                 active: await Booking.countDocuments({ booking_status: { $in: ['confirmed', 'ongoing'] } }),
@@ -93,11 +149,11 @@ exports.getRevenueAnalysis = async (req, res) => {
         }
 
         const analysis = await Booking.aggregate([
-            { $match: { payment_status: 'paid' } },
+            { $match: { payment_status: { $in: ['paid', 'partially_paid'] } } },
             {
                 $group: {
                     _id: groupId,
-                    total_revenue: { $sum: "$grand_total" },
+                    total_revenue: { $sum: "$total_paid" },
                     bookings_count: { $sum: 1 }
                 }
             },
@@ -116,7 +172,7 @@ exports.getRevenueAnalysis = async (req, res) => {
 exports.getFranchisePerformance = async (req, res) => {
     try {
         const performance = await Booking.aggregate([
-            { $match: { payment_status: 'paid' } },
+            { $match: { payment_status: { $in: ['paid', 'partially_paid'] } } },
             {
                 $lookup: {
                     from: 'vehicles',
@@ -129,7 +185,7 @@ exports.getFranchisePerformance = async (req, res) => {
             {
                 $group: {
                     _id: '$vehicle_details.franchise',
-                    total_revenue: { $sum: '$grand_total' },
+                    total_revenue: { $sum: '$total_paid' },
                     total_bookings: { $sum: 1 }
                 }
             },

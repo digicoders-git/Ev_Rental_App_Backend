@@ -19,6 +19,11 @@ const vehicleSchema = new mongoose.Schema({
         enum: ['car', 'bike', 'scooter'],
         required: [true, 'Please add a vehicle type'],
     },
+    category: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'VehicleCategory',
+        default: null
+    },
     year: {
         type: Number,
     },
@@ -123,6 +128,14 @@ const vehicleSchema = new mongoose.Schema({
     }
 }, {
     timestamps: true
+});
+
+// Generate unique vehicle_id before saving
+vehicleSchema.pre('save', async function() {
+    if (!this.vehicle_id) {
+        const dateStr = Date.now().toString();
+        this.vehicle_id = `VEH-${dateStr.substring(dateStr.length - 6)}`;
+    }
 });
 
 module.exports = mongoose.model('Vehicle', vehicleSchema);

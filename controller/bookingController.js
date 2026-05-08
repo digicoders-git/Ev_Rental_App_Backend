@@ -410,8 +410,10 @@ exports.markPaymentPaid = async (req, res) => {
         // Auto-update status
         if (booking.total_paid >= booking.grand_total) {
             booking.payment_status = 'paid';
+        } else if (booking.total_paid > 0) {
+            booking.payment_status = 'partially_paid';
         } else {
-            booking.payment_status = 'pending'; // Still partial
+            booking.payment_status = 'pending';
         }
 
         await booking.save();

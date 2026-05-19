@@ -18,7 +18,16 @@ const deleteFile = (filePath) => {
 // @access  Private
 exports.submitKYC = async (req, res) => {
     try {
-        const userId = req.user.id;
+        let userId = req.user ? req.user.id : null;
+        
+        if (req.body.userId && (req.franchise || (req.user && req.user.role === 'admin'))) {
+            userId = req.body.userId;
+        }
+
+        if (!userId) {
+            return res.status(400).json({ success: false, message: 'User ID is required' });
+        }
+
         const { aadharNumber, drivingLicenseNumber } = req.body;
 
         // Check if KYC already exists
@@ -28,7 +37,7 @@ exports.submitKYC = async (req, res) => {
             user: userId,
             aadharNumber,
             drivingLicenseNumber,
-            status: 'pending' // Reset status to pending on re-submission
+            status: 'pending'
         };
 
         // Handle File Uploads
@@ -67,10 +76,11 @@ exports.submitKYC = async (req, res) => {
             kyc = await KYC.create(kycData);
         }
 
-        // Notify Admin
+        const submittedByName = req.user ? (req.user.name || req.user.mobile) : (req.franchise ? (req.franchise.owner_name || 'Franchise Store') : 'System');
+
         await sendNotification({
             title: 'New KYC Submitted',
-            message: `User ${req.user.name || req.user.mobile} has submitted KYC documents for approval.`,
+            message: `User KYC submitted by ${submittedByName} for approval.`,
             type: 'kyc',
             related_id: kyc._id
         });

@@ -309,11 +309,9 @@ exports.getFranchiseRevenue = async (req, res) => {
         const { start_date, end_date } = req.query;
         const franchiseId = req.franchise.id;
 
-        // 1. Get all vehicles for this franchise
-        const vehicles = await Vehicle.find({ franchise: franchiseId }).select('_id');
-        const vehicleIds = vehicles.map(v => v._id);
-
-        // 2. Aggregate bookings for these vehicles
+        // Filter by booking.franchise (stamped at creation) so we only count
+        // bookings that were made WHILE the vehicle was assigned to this franchise.
+        // This prevents pre-assignment historical bookings from leaking into franchise stats.
         let dateFilter = {};
         if (start_date && end_date) {
             dateFilter = { createdAt: { $gte: new Date(start_date), $lte: new Date(end_date) } };
@@ -322,16 +320,15 @@ exports.getFranchiseRevenue = async (req, res) => {
         const stats = await Booking.aggregate([
             {
                 $match: {
-                    vehicle: { $in: vehicleIds },
-                    booking_status: 'completed',
-                    payment_status: 'paid',
+                    franchise: new mongoose.Types.ObjectId(franchiseId),
+                    booking_status: { $ne: 'cancelled' },
                     ...dateFilter
                 }
             },
             {
                 $group: {
                     _id: null,
-                    totalRevenue: { $sum: '$grand_total' },
+                    totalRevenue: { $sum: '$total_paid' },
                     totalBookings: { $sum: 1 },
                     totalLateFees: { $sum: '$late_fee' },
                     averageBookingValue: { $avg: '$grand_total' }
@@ -373,16 +370,15 @@ exports.getAdminRevenueByFranchise = async (req, res) => {
         const stats = await Booking.aggregate([
             {
                 $match: {
-                    vehicle: { $in: vehicleIds },
-                    booking_status: 'completed',
-                    payment_status: 'paid',
+                    franchise: new mongoose.Types.ObjectId(id),
+                    booking_status: { $ne: 'cancelled' },
                     ...dateFilter
                 }
             },
             {
                 $group: {
                     _id: null,
-                    totalRevenue: { $sum: '$grand_total' },
+                    totalRevenue: { $sum: '$total_paid' },
                     totalBookings: { $sum: 1 },
                     totalLateFees: { $sum: '$late_fee' }
                 }

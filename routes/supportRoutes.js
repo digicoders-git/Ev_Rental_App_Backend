@@ -6,18 +6,15 @@ const {
     getAllTickets,
     updateTicket
 } = require('../controller/supportController');
-const { protect, admin } = require('../middleware/authMiddleware');
+const { protect, admin, anyProtect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
 
-// All routes are protected
-router.use(protect);
-
-// User routes
-router.post('/ticket', upload.array('attachments', 5), createTicket);
-router.get('/my-tickets', getMyTickets);
+// User & Franchise routes
+router.post('/ticket', anyProtect, upload.array('attachments', 5), createTicket);
+router.get('/my-tickets', anyProtect, getMyTickets);
 
 // Admin routes
-router.get('/admin/all', admin, getAllTickets);
-router.put('/admin/ticket/:id', admin, updateTicket);
+router.get('/admin/all', protect, admin, getAllTickets);
+router.put('/admin/ticket/:id', protect, admin, updateTicket);
 
 module.exports = router;

@@ -125,6 +125,10 @@ const vehicleSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'FranchiseStore',
         default: null
+    },
+    added_by_franchise: {
+        type: Boolean,
+        default: false
     }
 }, {
     timestamps: true

@@ -249,3 +249,40 @@ exports.checkAvailability = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// @desc    Create new Vehicle by Franchise
+// @route   POST /api/vehicles/franchise/create
+// @access  Private/Franchise
+exports.createFranchiseVehicle = async (req, res) => {
+    try {
+        const data = { ...req.body };
+
+        // Auto-assign to logged-in franchise and mark as added_by_franchise
+        data.franchise = req.franchise.id;
+        data.added_by_franchise = true;
+
+        // Handle File Uploads
+        if (req.files) {
+            if (req.files.thumbnail_image) {
+                data.thumbnail_image = `uploads/${req.files.thumbnail_image[0].filename}`;
+            }
+            if (req.files.images) {
+                data.images = req.files.images.map(file => `uploads/${file.filename}`);
+            }
+            if (req.files.rc_document) {
+                data.rc_document = `uploads/${req.files.rc_document[0].filename}`;
+            }
+        }
+
+        // Handle Array fields from form-data
+        if (typeof data.features === 'string') {
+            data.features = data.features.split(',').map(f => f.trim());
+        }
+
+        const vehicle = await Vehicle.create(data);
+
+        res.status(201).json({ success: true, data: vehicle });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};

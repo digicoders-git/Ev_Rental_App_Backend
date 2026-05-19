@@ -8,7 +8,8 @@ const {
     deleteVehicle,
     assignVehicle,
     getMyFranchiseVehicles,
-    checkAvailability
+    checkAvailability,
+    createFranchiseVehicle
 } = require('../controller/vehicleController');
 const { protect, admin, franchiseProtect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -23,8 +24,9 @@ const uploadFields = upload.fields([
 // Public routes
 router.get('/', getAllVehicles);
 
-// Franchise owner route (Get assigned vehicles)
+// Franchise owner routes (Get / Add own vehicles)
 router.get('/franchise/my', franchiseProtect, getMyFranchiseVehicles);
+router.post('/franchise/create', franchiseProtect, uploadFields, createFranchiseVehicle);
 
 router.get('/:id', getVehicleById);
 router.get('/:id/availability', checkAvailability);

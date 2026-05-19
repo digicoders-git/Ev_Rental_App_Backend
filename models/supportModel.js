@@ -8,11 +8,15 @@ const supportSchema = new mongoose.Schema({
     user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        required: false
+    },
+    franchise: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'FranchiseStore',
+        required: false
     },
     category: {
         type: String,
-        enum: ['Vehicle Issue', 'Billing/Payment', 'KYC Verification', 'App/Technical', 'Other'],
         required: true
     },
     subject: {

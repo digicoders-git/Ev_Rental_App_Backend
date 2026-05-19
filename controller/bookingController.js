@@ -1,6 +1,7 @@
 const Booking = require('../models/bookingModel');
 const Vehicle = require('../models/vehicleModel');
 const RentalPlan = require('../models/planModel');
+const User = require('../models/userModel');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
@@ -46,14 +47,30 @@ exports.createBooking = async (req, res) => {
 
         // 3. Simple calculation (In a real app, calculate based on days)
         // For now, take amounts from body or use defaults if not provided
-        const total_amount = req.body.total_amount || (planData.price);
-        const security_deposit = planData.security_deposit;
+        const total_amount = req.body.total_amount !== undefined ? req.body.total_amount : planData.price;
+        const security_deposit = req.body.security_deposit !== undefined ? req.body.security_deposit : planData.security_deposit;
         const discount_amount = req.body.discount_amount || 0;
         const grand_total = total_amount + security_deposit - discount_amount;
 
+        let bookingUserId = req.user ? req.user.id : null;
+        let creatorName = req.user ? (req.user.name || 'User') : 'Franchise/Admin';
+
+        if (req.franchise || (req.user && req.user.role === 'admin')) {
+            if (req.body.user) {
+                bookingUserId = req.body.user;
+                const client = await User.findById(bookingUserId);
+                if (client) creatorName = client.name;
+            }
+        }
+
+        if (!bookingUserId) {
+            return res.status(400).json({ success: false, message: 'Customer ID is required to create a booking' });
+        }
+
         const booking = await Booking.create({
-            user: req.user.id,
+            user: bookingUserId,
             vehicle,
+            franchise: vehicleData.franchise || null, // Stamp which franchise this booking belongs to
             plan,
             start_date,
             end_date,
@@ -69,7 +86,7 @@ exports.createBooking = async (req, res) => {
         // Notify Admin
         await sendNotification({
             title: 'New Booking Created',
-            message: `Booking #${booking.booking_id} has been created by ${req.user.name || 'User'}.`,
+            message: `Booking #${booking.booking_id} has been created for ${creatorName}.`,
             type: 'booking',
             related_id: booking._id
         });
@@ -117,6 +134,7 @@ exports.getAllBookings = async (req, res) => {
         const bookings = await Booking.find(query)
             .populate('user', 'name mobile')
             .populate('vehicle', 'vehicle_name registration_number franchise')
+            .populate('franchise', 'store_name')
             .populate('plan', 'plan_name')
             .sort('-createdAt');
         
@@ -131,14 +149,13 @@ exports.getAllBookings = async (req, res) => {
 // @access  Private/Franchise
 exports.getFranchiseBookings = async (req, res) => {
     try {
-        // req.franchise is set by franchiseProtect
         const franchiseId = req.franchise.id;
 
-        const vehicles = await Vehicle.find({ franchise: franchiseId }).select('_id');
-        const vehicleIds = vehicles.map(v => v._id);
-
-        const bookings = await Booking.find({ vehicle: { $in: vehicleIds } })
-            .populate('user', 'name mobile')
+        // Filter directly by booking.franchise field (stamped at creation)
+        // This ensures only bookings made AFTER the vehicle was assigned to this
+        // franchise are returned — not historical admin bookings for the same vehicle.
+        const bookings = await Booking.find({ franchise: franchiseId })
+            .populate('user', 'name mobile email')
             .populate('vehicle', 'vehicle_name registration_number')
             .populate('plan', 'plan_name')
             .sort('-createdAt');

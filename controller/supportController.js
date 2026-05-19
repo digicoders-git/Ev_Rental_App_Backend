@@ -14,10 +14,11 @@ exports.createTicket = async (req, res) => {
         }
 
         const ticket = await Support.create({
-            user: req.user.id,
+            user: req.user ? req.user.id : null,
+            franchise: req.franchise ? req.franchise.id : null,
             category,
             subject,
-            description,
+            description: description || req.body.message || '', // Support both description and message (used in FComplaints)
             priority,
             booking,
             attachments: attachmentFiles
@@ -26,7 +27,7 @@ exports.createTicket = async (req, res) => {
         // Notify Admin
         await sendNotification({
             title: 'New Complaint/Ticket',
-            message: `New ${category} ticket #${ticket.ticket_id} created by rider.`,
+            message: `New ${category} ticket #${ticket.ticket_id} created.`,
             type: 'enquiry',
             related_id: ticket._id
         });
@@ -46,7 +47,12 @@ exports.createTicket = async (req, res) => {
 // @access  Private
 exports.getMyTickets = async (req, res) => {
     try {
-        const tickets = await Support.find({ user: req.user.id }).sort('-createdAt');
+        const query = {};
+        if (req.user) query.user = req.user.id;
+        else if (req.franchise) query.franchise = req.franchise.id;
+        else return res.status(401).json({ success: false, message: 'Not authorized' });
+
+        const tickets = await Support.find(query).sort('-createdAt');
         res.status(200).json({ success: true, count: tickets.length, data: tickets });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

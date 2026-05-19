@@ -7,7 +7,7 @@ const {
     updateKYCStatus,
     getKYCByMobile
 } = require('../controller/kycController');
-const { protect, admin } = require('../middleware/authMiddleware');
+const { protect, admin, anyProtect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
 
 // Multiparts fields for KYC documents
@@ -20,12 +20,12 @@ const kycUploadFields = upload.fields([
 ]);
 
 // User routes
-router.post('/submit', protect, kycUploadFields, submitKYC);
+router.post('/submit', anyProtect, kycUploadFields, submitKYC);
 router.get('/my-status', protect, getMyKYCStatus);
 
 // Admin routes
-router.get('/admin/all', protect, admin, getAllKYCSubmissions);
-router.get('/admin/track/:mobile', protect, admin, getKYCByMobile);
-router.put('/admin/status/:id', protect, admin, updateKYCStatus);
+router.get('/admin/all', anyProtect, getAllKYCSubmissions);
+router.get('/admin/track/:mobile', anyProtect, getKYCByMobile);
+router.put('/admin/status/:id', anyProtect, updateKYCStatus);
 
 module.exports = router;

@@ -15,6 +15,12 @@ const bookingSchema = new mongoose.Schema({
         ref: 'Vehicle',
         required: true
     },
+    // Stamped at booking creation to isolate franchise data correctly
+    franchise: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'FranchiseStore',
+        default: null
+    },
     plan: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'RentalPlan',

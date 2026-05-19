@@ -21,13 +21,13 @@ const {
 const { protect, admin, franchiseProtect, anyProtect } = require('../middleware/authMiddleware');
 
 // Public/User Routes
-router.post('/', protect, createBooking);
+router.post('/', anyProtect, createBooking);
 router.get('/my', protect, getMyBookings);
 router.get('/dues/my', protect, getMyDues);
 
 // Management & Admin
 router.get('/admin/dues', protect, admin, getAdminDues);
-router.post('/:id/pay-manual', protect, admin, markPaymentPaid);
+router.post('/:id/pay-manual', anyProtect, markPaymentPaid);
 
 
 // Franchise Specific

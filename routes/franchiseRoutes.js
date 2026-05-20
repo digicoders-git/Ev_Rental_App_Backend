@@ -15,7 +15,8 @@ const {
     updateFranchiseProfile,
     changeFranchisePassword,
     getFranchiseRevenue,
-    getAdminRevenueByFranchise
+    getAdminRevenueByFranchise,
+    getFranchiseHistory
 } = require('../controller/franchiseController');
 const { protect, admin, franchiseProtect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -35,6 +36,7 @@ router.get('/admin/revenue/:id', protect, admin, getAdminRevenueByFranchise);
 router.post('/stores', protect, admin, addFranchiseStore);
 router.get('/stores', protect, admin, getAllFranchiseStores);
 router.get('/stores/:id', protect, admin, getFranchiseStoreById);
+router.get('/stores/:id/history', protect, admin, getFranchiseHistory);
 router.put('/stores/:id', protect, admin, updateFranchiseStore);
 router.delete('/stores/:id', protect, admin, deleteFranchiseStore);
 

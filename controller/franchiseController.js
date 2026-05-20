@@ -393,3 +393,90 @@ exports.getAdminRevenueByFranchise = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// @desc    Get Franchise History Details (Admin Only)
+// @route   GET /api/franchise-enquiry/stores/:id/history
+// @access  Private/Admin
+exports.getFranchiseHistory = async (req, res) => {
+    try {
+        const storeId = req.params.id;
+
+        const store = await FranchiseStore.findById(storeId);
+        if (!store) {
+            return res.status(404).json({ success: false, message: 'Store not found' });
+        }
+
+        // 1. Vehicles
+        const totalVehicles = await Vehicle.countDocuments({ franchise: storeId });
+        const assignedVehicles = await Vehicle.countDocuments({ franchise: storeId, added_by_franchise: { $ne: true } });
+        const ownedVehicles = await Vehicle.countDocuments({ franchise: storeId, added_by_franchise: true });
+
+        // 2. Bookings
+        const totalBookings = await Booking.countDocuments({ franchise: storeId });
+        const pendingBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'pending' });
+        const completedBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'completed' });
+        const ongoingBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'ongoing' });
+        const cancelledBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'cancelled' });
+
+        // 3. Revenue
+        const revenueStats = await Booking.aggregate([
+            {
+                $match: {
+                    franchise: new mongoose.Types.ObjectId(storeId),
+                    booking_status: { $ne: 'cancelled' }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalRevenue: { $sum: '$total_paid' },
+                    grandTotal: { $sum: '$grand_total' },
+                    lateFee: { $sum: '$late_fee' }
+                }
+            }
+        ]);
+
+        const totalRevenue = revenueStats.length > 0 ? revenueStats[0].totalRevenue : 0;
+        const grandTotal = revenueStats.length > 0 ? revenueStats[0].grandTotal : 0;
+        const totalLateFee = revenueStats.length > 0 ? revenueStats[0].lateFee : 0;
+
+        // Fetch list of recent bookings with user/vehicle details
+        const recentBookings = await Booking.find({ franchise: storeId })
+            .populate('user', 'name email mobile')
+            .populate('vehicle', 'vehicle_name registration_number')
+            .sort('-createdAt')
+            .limit(10);
+
+        // Fetch list of vehicles with status
+        const vehicleList = await Vehicle.find({ franchise: storeId }).select('vehicle_name registration_number status added_by_franchise price_per_day');
+
+        res.status(200).json({
+            success: true,
+            data: {
+                store,
+                vehicles: {
+                    total: totalVehicles,
+                    assigned: assignedVehicles,
+                    owned: ownedVehicles,
+                    list: vehicleList
+                },
+                bookings: {
+                    total: totalBookings,
+                    pending: pendingBookings,
+                    completed: completedBookings,
+                    ongoing: ongoingBookings,
+                    cancelled: cancelledBookings,
+                    recent: recentBookings
+                },
+                revenue: {
+                    totalPaid: totalRevenue,
+                    grandTotal: grandTotal,
+                    totalLateFee: totalLateFee
+                }
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+

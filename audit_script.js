@@ -4,7 +4,7 @@ const BASE_URL = 'localhost';
 const PORT = 5000;
 const adminData = JSON.stringify({
     name: "Audit Admin",
-    email: "audit@voltrent.com",
+    email: "audit@evrental.com",
     mobile: "9898989898",
     password: "Admin@123"
 });

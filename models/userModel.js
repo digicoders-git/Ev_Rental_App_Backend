@@ -56,7 +56,7 @@ const userSchema = new mongoose.Schema({
     },
     bio: {
         type: String,
-        default: "Administrator of VoltRent EV platform."
+        default: "Administrator of EVRental EV platform."
     },
     city: {
         type: String,

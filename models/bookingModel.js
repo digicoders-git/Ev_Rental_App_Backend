@@ -88,7 +88,25 @@ const bookingSchema = new mongoose.Schema({
     additional_charges: {
         type: Number,
         default: 0
-    }
+    },
+    payment_installments: [
+        {
+            installment_no: Number,
+            amount: { type: Number, required: true },
+            due_date: { type: Date, required: true },
+            paid_date: { type: Date, default: null },
+            status: { type: String, enum: ['pending', 'paid', 'overdue'], default: 'pending' },
+            transaction_id: { type: String, default: '' }
+        }
+    ],
+    damage_charges: [
+        {
+            description: { type: String, required: true },
+            amount: { type: Number, required: true },
+            added_by: { type: String, enum: ['admin', 'franchise'], default: 'admin' },
+            createdAt: { type: Date, default: Date.now }
+        }
+    ]
 }, {
     timestamps: true,
     toJSON: { virtuals: true },

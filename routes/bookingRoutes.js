@@ -16,7 +16,10 @@ const {
     cancelBooking,
     extendBooking,
     approveBooking,
-    rejectBooking
+    rejectBooking,
+    setupInstallments,
+    payInstallment,
+    addDamageCharge
 } = require('../controller/bookingController');
 const { protect, admin, franchiseProtect, anyProtect } = require('../middleware/authMiddleware');
 
@@ -46,5 +49,12 @@ router.get('/', anyProtect, getAllBookings);
 router.patch('/:id/approve', anyProtect, approveBooking);
 router.patch('/:id/reject', anyProtect, rejectBooking);
 router.patch('/:id/status', anyProtect, updateBookingStatus);
+
+// Installment Routes
+router.post('/:id/installments/setup', anyProtect, setupInstallments);
+router.post('/:id/installments/:instId/pay', anyProtect, payInstallment);
+
+// Damage / Extra Charge Routes
+router.post('/:id/damage-charge', anyProtect, addDamageCharge);
 
 module.exports = router;

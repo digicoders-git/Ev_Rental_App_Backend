@@ -27,6 +27,7 @@ router.get('/', getAllVehicles);
 // Franchise owner routes (Get / Add own vehicles)
 router.get('/franchise/my', franchiseProtect, getMyFranchiseVehicles);
 router.post('/franchise/create', franchiseProtect, uploadFields, createFranchiseVehicle);
+router.put('/franchise/:id', franchiseProtect, uploadFields, updateVehicle);
 
 router.get('/:id', getVehicleById);
 router.get('/:id/availability', checkAvailability);

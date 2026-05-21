@@ -9,7 +9,9 @@ const {
     getAllUsers,
     getUserDetail,
     updateUserStatus,
-    deleteUser
+    deleteUser,
+    saveFcmToken,
+    triggerInstallmentNotifications
 } = require('../controller/userController');
 const { protect, admin, anyProtect } = require('../middleware/authMiddleware');
 
@@ -18,8 +20,10 @@ router.get('/profile', protect, getProfile);
 router.put('/profile', protect, updateProfile);
 router.get('/credit-score', protect, getCreditScore);
 router.put('/change-password', protect, changePassword);
+router.post('/fcm-token', protect, saveFcmToken);
 
-// Admin & Franchise routes
+// Admin routes
+router.post('/trigger-installment-notifications', protect, admin, triggerInstallmentNotifications);
 router.post('/admin/add-rider', anyProtect, addRider);
 router.get('/admin/all', anyProtect, getAllUsers);
 router.get('/admin/:id', protect, admin, getUserDetail);

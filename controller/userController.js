@@ -2,6 +2,38 @@ const User = require('../models/userModel');
 const Booking = require('../models/bookingModel');
 const KYC = require('../models/kycModel');
 
+// @desc    Save / Update FCM Token
+// @route   POST /api/user/fcm-token
+// @access  Private
+exports.saveFcmToken = async (req, res) => {
+    try {
+        const { fcm_token } = req.body;
+        if (!fcm_token) return res.status(400).json({ success: false, message: 'fcm_token is required' });
+        await User.findByIdAndUpdate(req.user.id, { fcm_token });
+        res.status(200).json({ success: true, message: 'FCM token saved' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Manually trigger installment notification check (Admin/Test)
+// @route   POST /api/user/trigger-installment-notifications
+// @access  Private/Admin
+exports.triggerInstallmentNotifications = async (req, res) => {
+    try {
+        const { runInstallmentNotifications } = require('../utils/installmentScheduler');
+        const force = req.body.force === true || req.query.force === 'true';
+        const result = await runInstallmentNotifications(force);
+        res.status(200).json({
+            success: true,
+            message: `Notifications triggered (force=${force}). Sent: ${result.sent}, Bookings checked: ${result.bookingsChecked}`,
+            data: result
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // @desc    Get User Profile
 // @route   GET /api/user/profile
 // @access  Private

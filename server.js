@@ -12,6 +12,10 @@ dotenv.config();
 // Connect to Database
 connectDB();
 
+// Start installment reminder scheduler
+const { startInstallmentScheduler } = require('./utils/installmentScheduler');
+startInstallmentScheduler();
+
 
 const app = express();
 

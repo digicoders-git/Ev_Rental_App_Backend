@@ -51,7 +51,7 @@ exports.sendOTP = async (req, res) => {
 // @route   POST /api/auth/verify-otp
 // @access  Public
 exports.verifyOTP = async (req, res) => {
-    const { mobile, otp } = req.body;
+    const { mobile, otp, fcm_token } = req.body;
 
     if (!mobile || !otp) {
         return res.status(400).json({ success: false, message: 'Please provide mobile and OTP' });
@@ -73,6 +73,7 @@ exports.verifyOTP = async (req, res) => {
         user.otp = undefined;
         user.otpExpire = undefined;
         user.isVerified = true;
+        if (fcm_token) user.fcm_token = fcm_token;
         await user.save();
 
         res.status(200).json({

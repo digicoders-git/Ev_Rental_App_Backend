@@ -25,7 +25,11 @@ const notificationSchema = new mongoose.Schema({
         default: 'system'
     },
     related_id: {
-        type: String, // ID of booking/kyc/etc
+        type: String,
+    },
+    due_date: {
+        type: Date,
+        default: null
     },
     isRead: {
         type: Boolean,

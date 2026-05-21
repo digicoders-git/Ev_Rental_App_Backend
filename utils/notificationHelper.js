@@ -12,7 +12,8 @@ const sendNotification = async (data) => {
             title: data.title,
             message: data.message,
             type: data.type || 'system',
-            related_id: data.related_id || null
+            related_id: data.related_id || null,
+            due_date: data.due_date || null
         });
         return true;
     } catch (error) {

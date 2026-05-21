@@ -137,8 +137,26 @@ exports.getAllBookings = async (req, res) => {
             .populate('franchise', 'store_name')
             .populate('plan', 'plan_name')
             .sort('-createdAt');
-        
-        res.status(200).json({ success: true, count: bookings.length, data: bookings });
+
+        const now = new Date();
+        const result = bookings.map(b => {
+            const obj = b.toObject({ virtuals: true });
+            if (obj.payment_installments && obj.payment_installments.length > 0) {
+                // auto-mark overdue
+                obj.payment_installments.forEach(inst => {
+                    if (inst.status === 'pending' && new Date(inst.due_date) < now) inst.status = 'overdue';
+                });
+                const pending = obj.payment_installments
+                    .filter(i => i.status !== 'paid')
+                    .sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+                obj.next_installment = pending.length > 0 ? pending[0] : null;
+            } else {
+                obj.next_installment = null;
+            }
+            return obj;
+        });
+
+        res.status(200).json({ success: true, count: result.length, data: result });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -160,7 +178,24 @@ exports.getFranchiseBookings = async (req, res) => {
             .populate('plan', 'plan_name')
             .sort('-createdAt');
 
-        res.status(200).json({ success: true, count: bookings.length, data: bookings });
+        const now = new Date();
+        const result = bookings.map(b => {
+            const obj = b.toObject({ virtuals: true });
+            if (obj.payment_installments && obj.payment_installments.length > 0) {
+                obj.payment_installments.forEach(inst => {
+                    if (inst.status === 'pending' && new Date(inst.due_date) < now) inst.status = 'overdue';
+                });
+                const pending = obj.payment_installments
+                    .filter(i => i.status !== 'paid')
+                    .sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+                obj.next_installment = pending.length > 0 ? pending[0] : null;
+            } else {
+                obj.next_installment = null;
+            }
+            return obj;
+        });
+
+        res.status(200).json({ success: true, count: result.length, data: result });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -186,7 +221,63 @@ exports.getBookingById = async (req, res) => {
             return res.status(401).json({ success: false, message: 'Not authorized' });
         }
 
-        res.status(200).json({ success: true, data: booking });
+        const now = new Date();
+        const due_amount = Math.max(0, booking.grand_total - booking.total_paid);
+
+        // Mark overdue installments on the fly
+        let next_installment = null;
+        let overdue_installments = [];
+
+        if (booking.payment_installments && booking.payment_installments.length > 0) {
+            booking.payment_installments.forEach(inst => {
+                if (inst.status === 'pending' && new Date(inst.due_date) < now) {
+                    inst.status = 'overdue';
+                }
+            });
+
+            // Next upcoming pending/overdue installment (earliest due_date)
+            const pending = booking.payment_installments
+                .filter(i => i.status !== 'paid')
+                .sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+
+            if (pending.length > 0) {
+                next_installment = {
+                    installment_no: pending[0].installment_no,
+                    amount: pending[0].amount,
+                    due_date: pending[0].due_date,
+                    status: pending[0].status,
+                    _id: pending[0]._id
+                };
+            }
+
+            overdue_installments = booking.payment_installments
+                .filter(i => i.status === 'overdue')
+                .map(i => ({ installment_no: i.installment_no, amount: i.amount, due_date: i.due_date, _id: i._id }));
+
+            await booking.save();
+        }
+
+        const paid_installments_count = (booking.payment_installments || []).filter(i => i.status === 'paid').length;
+        const total_installments_count = (booking.payment_installments || []).length;
+
+        res.status(200).json({
+            success: true,
+            data: booking,
+            payment_summary: {
+                grand_total: booking.grand_total,
+                total_paid: booking.total_paid,
+                due_amount,
+                payment_status: booking.payment_status,
+                payment_progress_percent: booking.grand_total > 0
+                    ? Math.round((booking.total_paid / booking.grand_total) * 100)
+                    : 0,
+                total_installments: total_installments_count,
+                paid_installments: paid_installments_count,
+                pending_installments: total_installments_count - paid_installments_count,
+                next_installment,
+                overdue_installments
+            }
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -735,5 +826,122 @@ exports.rejectBooking = async (req, res) => {
         res.status(200).json({ success: true, message: 'Booking rejected and cancelled', data: booking });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Add damage / extra charge to a booking
+// @route   POST /api/bookings/:id/damage-charge
+// @access  Private/Admin or Franchise
+exports.addDamageCharge = async (req, res) => {
+    try {
+        const { description, amount } = req.body;
+        if (!description || !amount || Number(amount) <= 0) {
+            return res.status(400).json({ success: false, message: 'description and a valid amount are required' });
+        }
+
+        const booking = await Booking.findById(req.params.id);
+        if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+        const added_by = req.user?.role === 'admin' ? 'admin' : 'franchise';
+
+        booking.damage_charges.push({ description, amount: Number(amount), added_by });
+        booking.grand_total += Number(amount);
+        booking.additional_charges = (booking.additional_charges || 0) + Number(amount);
+
+        // re-evaluate payment_status
+        if (booking.total_paid >= booking.grand_total) {
+            booking.payment_status = 'paid';
+        } else if (booking.total_paid > 0) {
+            booking.payment_status = 'partially_paid';
+        } else {
+            booking.payment_status = 'pending';
+        }
+
+        await booking.save();
+
+        res.status(200).json({
+            success: true,
+            message: `Extra charge of ₹${amount} added for "${description}"`,
+            grand_total: booking.grand_total,
+            damage_charges: booking.damage_charges
+        });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Set installment schedule for a booking (Admin)
+// @route   POST /api/bookings/:id/installments/setup
+// @access  Private/Admin
+exports.setupInstallments = async (req, res) => {
+    try {
+        const { installments } = req.body; // [{ amount, due_date }]
+        if (!installments || !Array.isArray(installments) || installments.length === 0) {
+            return res.status(400).json({ success: false, message: 'Provide installments array with amount and due_date' });
+        }
+
+        const booking = await Booking.findById(req.params.id);
+        if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+        const totalInstallmentAmount = installments.reduce((sum, i) => sum + Number(i.amount), 0);
+        const remaining = booking.grand_total - booking.total_paid;
+
+        if (Math.round(totalInstallmentAmount) > Math.round(remaining)) {
+            return res.status(400).json({ success: false, message: `Total installments (${totalInstallmentAmount}) cannot exceed due amount (${remaining})` });
+        }
+
+        booking.payment_installments = installments.map((inst, idx) => ({
+            installment_no: idx + 1,
+            amount: Number(inst.amount),
+            due_date: new Date(inst.due_date),
+            status: 'pending'
+        }));
+
+        await booking.save();
+        res.status(200).json({ success: true, message: 'Installment schedule saved', data: booking.payment_installments });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Pay a specific installment (Admin)
+// @route   POST /api/bookings/:id/installments/:instId/pay
+// @access  Private/Admin
+exports.payInstallment = async (req, res) => {
+    try {
+        const { transaction_id, payment_method } = req.body;
+        const booking = await Booking.findById(req.params.id);
+        if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+        const inst = booking.payment_installments.id(req.params.instId);
+        if (!inst) return res.status(404).json({ success: false, message: 'Installment not found' });
+        if (inst.status === 'paid') return res.status(400).json({ success: false, message: 'Installment already paid' });
+
+        inst.status = 'paid';
+        inst.paid_date = new Date();
+        if (transaction_id) inst.transaction_id = transaction_id;
+        if (payment_method) booking.payment_method = payment_method;
+
+        booking.total_paid += inst.amount;
+
+        if (booking.total_paid >= booking.grand_total) {
+            booking.payment_status = 'paid';
+        } else if (booking.total_paid > 0) {
+            booking.payment_status = 'partially_paid';
+        }
+
+        const now = new Date();
+        booking.payment_installments.forEach(i => {
+            if (i.status === 'pending' && new Date(i.due_date) < now) i.status = 'overdue';
+        });
+
+        await booking.save();
+        res.status(200).json({
+            success: true,
+            message: `Installment #${inst.installment_no} of ₹${inst.amount} marked as paid`,
+            data: booking.payment_installments
+        });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
     }
 };

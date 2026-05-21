@@ -39,7 +39,19 @@ exports.franchiseLogin = async (req, res) => {
         res.status(200).json({
             success: true,
             message: 'Franchise login successful',
-            data: store,
+            data: {
+                _id: store._id,
+                store_name: store.store_name,
+                owner_name: store.owner_name,
+                email: store.email,
+                mobile: store.mobile,
+                address: store.address,
+                city: store.city,
+                state: store.state,
+                store_id: store.store_id,
+                status: store.status,
+                profile_image: store.profile_image,
+            },
             token: generateToken(store._id)
         });
     } catch (error) {

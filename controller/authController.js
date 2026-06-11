@@ -8,68 +8,67 @@ const generateToken = (id) => {
     });
 };
 
-// @desc    Send OTP to Mobile
+// @desc    Send OTP using Aadhar Number (mobile auto-fetched from Aadhar)
 // @route   POST /api/auth/send-otp
 // @access  Public
 exports.sendOTP = async (req, res) => {
-    const { mobile } = req.body;
+    const { aadharNumber } = req.body;
 
-    if (!mobile) {
-        return res.status(400).json({ success: false, message: 'Please provide a mobile number' });
+    if (!aadharNumber || !/^\d{12}$/.test(aadharNumber)) {
+        return res.status(400).json({ success: false, message: 'Please provide a valid 12-digit Aadhar number' });
     }
 
     try {
-        // Fixed OTP for testing
-        const otp = "123456";
-        const otpExpire = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
+        // In production: fetch mobile from Aadhar-linked DB / UIDAI API
+        // For now: we simulate the linked mobile as last 10 digits of aadhar
+        const linkedMobile = aadharNumber.slice(-10);
 
-        // Find user or create if not exists
-        let user = await User.findOne({ mobile });
+        const otp = '123456'; // Fixed OTP for testing
+        const otpExpire = new Date(Date.now() + 10 * 60 * 1000);
 
+        let user = await User.findOne({ aadharNumber });
         if (!user) {
-            user = await User.create({ mobile });
+            user = await User.create({ aadharNumber, mobile: linkedMobile });
         }
 
         user.otp = otp;
         user.otpExpire = otpExpire;
         await user.save();
 
-        // NOTE: In production, integrate an SMS gateway here (Twilio, Fast2SMS, etc.)
-        console.log(`OTP for ${mobile}: ${otp}`);
+        console.log(`OTP for Aadhar ${aadharNumber} (linked mobile ${linkedMobile}): ${otp}`);
 
         res.status(200).json({
             success: true,
-            message: 'OTP sent successfully',
-            otp: process.env.NODE_ENV === 'development' ? otp : undefined // Hide OTP in production
+            message: `OTP sent to Aadhar-linked mobile number ending in ...${linkedMobile.slice(-4)}`,
+            // Only expose in development
+            ...(process.env.NODE_ENV === 'development' && { otp, linkedMobile })
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-// @desc    Verify OTP and Login/Register
+// @desc    Verify OTP using Aadhar Number
 // @route   POST /api/auth/verify-otp
 // @access  Public
 exports.verifyOTP = async (req, res) => {
-    const { mobile, otp, fcm_token } = req.body;
+    const { aadharNumber, otp, fcm_token } = req.body;
 
-    if (!mobile || !otp) {
-        return res.status(400).json({ success: false, message: 'Please provide mobile and OTP' });
+    if (!aadharNumber || !otp) {
+        return res.status(400).json({ success: false, message: 'Please provide Aadhar number and OTP' });
     }
 
     try {
-        const user = await User.findOne({ mobile });
+        const user = await User.findOne({ aadharNumber });
 
         if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found' });
+            return res.status(404).json({ success: false, message: 'No user found with this Aadhar number' });
         }
 
-        // Check if OTP matches and is not expired
         if (user.otp !== otp || user.otpExpire < Date.now()) {
             return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
         }
 
-        // Clear OTP and mark as verified
         user.otp = undefined;
         user.otpExpire = undefined;
         user.isVerified = true;
@@ -78,13 +77,14 @@ exports.verifyOTP = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            message: 'Login successful',
+            message: 'OTP verified successfully. Please complete KYC to activate your account.',
             user: {
                 id: user._id,
                 mobile: user.mobile,
+                aadharNumber: user.aadharNumber,
                 name: user.name,
-                email: user.email,
-                role: user.role
+                role: user.role,
+                isKycVerified: user.isKycVerified
             },
             token: generateToken(user._id)
         });

@@ -4,8 +4,8 @@ const bcrypt = require('bcryptjs');
 const userSchema = new mongoose.Schema({
     mobile: {
         type: String,
-        required: true,
-        unique: true,
+        required: false,
+        sparse: true,
         trim: true
     },
     name: {
@@ -24,6 +24,12 @@ const userSchema = new mongoose.Schema({
         type: String,
         enum: ['user', 'admin'],
         default: 'user'
+    },
+    aadharNumber: {
+        type: String,
+        default: '',
+        unique: true,
+        sparse: true
     },
     otp: {
         type: String

@@ -20,20 +20,11 @@ const kycSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    drivingLicenseNumber: {
-        type: String,
-        required: true,
-        trim: true
-    },
-    drivingLicenseFront: {
+    panCard: {
         type: String,
         required: true
     },
-    drivingLicenseBack: {
-        type: String,
-        required: true
-    },
-    userPhoto: {
+    selfie: {
         type: String,
         required: true
     },

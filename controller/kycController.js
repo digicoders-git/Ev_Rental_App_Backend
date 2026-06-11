@@ -1,94 +1,76 @@
 const KYC = require('../models/kycModel');
+const User = require('../models/userModel');
 const fs = require('fs');
 const path = require('path');
 const { sendNotification } = require('../utils/notificationHelper');
 
-// Helper to delete files
 const deleteFile = (filePath) => {
     if (filePath) {
         const fullPath = path.join(__dirname, '..', filePath);
-        if (fs.existsSync(fullPath)) {
-            fs.unlinkSync(fullPath);
-        }
+        if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
     }
 };
 
 // @desc    Submit KYC documents
 // @route   POST /api/kyc/submit
-// @access  Private
+// @access  Private (User with valid token after OTP verify)
 exports.submitKYC = async (req, res) => {
     try {
-        let userId = req.user ? req.user.id : null;
-        
-        if (req.body.userId && (req.franchise || (req.user && req.user.role === 'admin'))) {
-            userId = req.body.userId;
+        const userId = req.user.id;
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        if (!userId) {
-            return res.status(400).json({ success: false, message: 'User ID is required' });
+        if (!user.isVerified) {
+            return res.status(403).json({ success: false, message: 'Please verify OTP first before submitting KYC' });
         }
 
-        const { aadharNumber, drivingLicenseNumber } = req.body;
+        const { aadharNumber } = req.body;
 
-        // Check if KYC already exists
-        let kyc = await KYC.findOne({ user: userId });
+        if (!aadharNumber || !/^\d{12}$/.test(aadharNumber)) {
+            return res.status(400).json({ success: false, message: 'Valid 12-digit Aadhar number is required' });
+        }
 
-        const kycData = {
-            user: userId,
-            aadharNumber,
-            drivingLicenseNumber,
-            status: 'pending'
-        };
+        const requiredFiles = ['aadharFront', 'aadharBack', 'panCard', 'selfie'];
+        let existingKyc = await KYC.findOne({ user: userId });
 
-        // Handle File Uploads
-        if (!req.files || !req.files.aadharFront || !req.files.aadharBack || !req.files.drivingLicenseFront || !req.files.drivingLicenseBack || !req.files.userPhoto) {
-            if (!kyc) {
-                return res.status(400).json({ success: false, message: 'All 5 document images (Aadhar F/B, DL F/B, User Photo) are required for first-time submission' });
+        if (!existingKyc) {
+            const missing = requiredFiles.filter(f => !req.files || !req.files[f]);
+            if (missing.length > 0) {
+                return res.status(400).json({ success: false, message: `Missing required documents: ${missing.join(', ')}` });
             }
         }
+
+        const kycData = { user: userId, aadharNumber, status: 'pending' };
 
         if (req.files) {
-            if (req.files.aadharFront) {
-                if (kyc) deleteFile(kyc.aadharFront);
-                kycData.aadharFront = `uploads/${req.files.aadharFront[0].filename}`;
-            }
-            if (req.files.aadharBack) {
-                if (kyc) deleteFile(kyc.aadharBack);
-                kycData.aadharBack = `uploads/${req.files.aadharBack[0].filename}`;
-            }
-            if (req.files.drivingLicenseFront) {
-                if (kyc) deleteFile(kyc.drivingLicenseFront);
-                kycData.drivingLicenseFront = `uploads/${req.files.drivingLicenseFront[0].filename}`;
-            }
-            if (req.files.drivingLicenseBack) {
-                if (kyc) deleteFile(kyc.drivingLicenseBack);
-                kycData.drivingLicenseBack = `uploads/${req.files.drivingLicenseBack[0].filename}`;
-            }
-            if (req.files.userPhoto) {
-                if (kyc) deleteFile(kyc.userPhoto);
-                kycData.userPhoto = `uploads/${req.files.userPhoto[0].filename}`;
+            for (const field of requiredFiles) {
+                if (req.files[field]) {
+                    if (existingKyc) deleteFile(existingKyc[field]);
+                    kycData[field] = `uploads/${req.files[field][0].filename}`;
+                }
             }
         }
 
-        if (kyc) {
-            kyc = await KYC.findOneAndUpdate({ user: userId }, kycData, { new: true, runValidators: true });
+        if (existingKyc) {
+            existingKyc = await KYC.findOneAndUpdate({ user: userId }, kycData, { new: true, runValidators: true });
         } else {
-            kyc = await KYC.create(kycData);
+            existingKyc = await KYC.create(kycData);
         }
-
-        const submittedByName = req.user ? (req.user.name || req.user.mobile) : (req.franchise ? (req.franchise.owner_name || 'Franchise Store') : 'System');
 
         await sendNotification({
             title: 'New KYC Submitted',
-            message: `User KYC submitted by ${submittedByName} for approval.`,
+            message: `KYC submitted by user ${user.mobile} for admin approval.`,
             type: 'kyc',
-            related_id: kyc._id
+            related_id: existingKyc._id
         });
 
-        res.status(kyc ? 200 : 201).json({
+        res.status(200).json({
             success: true,
-            message: 'KYC documents submitted successfully',
-            data: kyc
+            message: 'KYC documents submitted successfully. Awaiting admin approval.',
+            data: existingKyc
         });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
@@ -102,7 +84,7 @@ exports.getMyKYCStatus = async (req, res) => {
     try {
         const kyc = await KYC.findOne({ user: req.user.id });
         if (!kyc) {
-            return res.status(200).json({ success: true, status: 'not_submitted', message: 'No KYC documents submitted yet' });
+            return res.status(200).json({ success: true, status: 'not_submitted', message: 'No KYC submitted yet' });
         }
         res.status(200).json({ success: true, data: kyc });
     } catch (error) {
@@ -110,7 +92,7 @@ exports.getMyKYCStatus = async (req, res) => {
     }
 };
 
-// @desc    Get all KYC submissions (Admin only)
+// @desc    Get all KYC submissions (Admin)
 // @route   GET /api/kyc/admin/all
 // @access  Private/Admin
 exports.getAllKYCSubmissions = async (req, res) => {
@@ -122,15 +104,15 @@ exports.getAllKYCSubmissions = async (req, res) => {
     }
 };
 
-// @desc    Update KYC status (Admin only)
-// @route   PUT /api/kyc/admin/update-status/:id
+// @desc    Approve or Reject KYC (Admin)
+// @route   PUT /api/kyc/admin/status/:id
 // @access  Private/Admin
 exports.updateKYCStatus = async (req, res) => {
     try {
         const { status, rejectionReason } = req.body;
-        
+
         if (!['approved', 'rejected', 'pending'].includes(status)) {
-            return res.status(400).json({ success: false, message: 'Invalid status' });
+            return res.status(400).json({ success: false, message: 'Invalid status value' });
         }
 
         const kyc = await KYC.findByIdAndUpdate(
@@ -143,50 +125,34 @@ exports.updateKYCStatus = async (req, res) => {
             return res.status(404).json({ success: false, message: 'KYC record not found' });
         }
 
-        // --- FULL FLOW: SYNC WITH USER MODEL ---
-        const User = require('../models/userModel');
         const user = await User.findById(kyc.user);
-
         if (user) {
-            if (status === 'approved') {
-                user.isKycVerified = true;
-                user.credit_score += 50; // Performance bonus for KYC
-            } else {
-                user.isKycVerified = false;
-            }
+            user.isKycVerified = status === 'approved';
+            if (status === 'approved') user.credit_score += 50;
             await user.save();
         }
 
-        res.status(200).json({ 
-            success: true, 
-            message: `KYC status updated to ${status} and user profile synced`, 
-            data: { kyc, user_status: user ? user.isKycVerified : 'Unknown' } 
+        res.status(200).json({
+            success: true,
+            message: `KYC ${status} successfully. Customer is now ${status === 'approved' ? 'registered' : 'not yet registered'}.`,
+            data: { kyc, isKycVerified: user ? user.isKycVerified : false }
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-// @desc    Track KYC status by Mobile Number (Admin only)
+// @desc    Track KYC by Mobile (Admin)
 // @route   GET /api/kyc/admin/track/:mobile
 // @access  Private/Admin
 exports.getKYCByMobile = async (req, res) => {
     try {
-        const { mobile } = req.params;
-        
-        // Find user first
-        const user = await require('../models/userModel').findOne({ mobile });
-        if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
+        const user = await User.findOne({ mobile: req.params.mobile });
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
         const kyc = await KYC.findOne({ user: user._id }).populate('user', 'name mobile email');
         if (!kyc) {
-            return res.status(200).json({ 
-                success: true, 
-                status: 'not_submitted', 
-                message: 'User has not submitted any KYC documents yet' 
-            });
+            return res.status(200).json({ success: true, status: 'not_submitted', message: 'No KYC submitted yet' });
         }
 
         res.status(200).json({ success: true, data: kyc });

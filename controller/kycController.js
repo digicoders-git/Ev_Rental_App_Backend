@@ -3,6 +3,7 @@ const User = require('../models/userModel');
 const fs = require('fs');
 const path = require('path');
 const { sendNotification } = require('../utils/notificationHelper');
+const { sendPushNotification } = require('../utils/fcmHelper');
 
 const deleteFile = (filePath) => {
     if (filePath) {
@@ -130,6 +131,41 @@ exports.updateKYCStatus = async (req, res) => {
             user.isKycVerified = status === 'approved';
             if (status === 'approved') user.credit_score += 50;
             await user.save();
+
+            const title = status === 'approved' ? '✅ KYC Approved!' : '❌ KYC Rejected';
+            const message = status === 'approved'
+                ? 'Your KYC has been verified successfully. You can now book vehicles!'
+                : `Your KYC was rejected. Reason: ${rejectionReason || 'Documents not clear'}. Please resubmit.`;
+
+            // ✅ Real-time Socket.IO event → customer ke room mein emit
+            const io = req.app.get('io');
+            if (io) {
+                io.to(user._id.toString()).emit('kyc_status_update', {
+                    status,
+                    isKycVerified: status === 'approved',
+                    rejectionReason: status === 'rejected' ? (rejectionReason || 'Documents not clear') : null,
+                    message
+                });
+            }
+
+            // FCM push to mobile app (app background mein ho tab bhi kaam kare)
+            if (user.fcm_token) {
+                await sendPushNotification(user.fcm_token, title, message, {
+                    type: 'kyc_status',
+                    kyc_status: status,
+                    is_kyc_verified: String(status === 'approved'),
+                });
+            }
+
+            // In-app notification DB mein store
+            await sendNotification({
+                recipient: user._id,
+                recipient_role: 'user',
+                title,
+                message,
+                type: 'kyc',
+                related_id: kyc._id,
+            });
         }
 
         res.status(200).json({

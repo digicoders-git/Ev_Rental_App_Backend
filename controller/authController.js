@@ -8,47 +8,46 @@ const generateToken = (id) => {
     });
 };
 
-// @desc    Send OTP using Aadhar Number (mobile auto-fetched from Aadhar)
+// @desc    Send OTP using Aadhar Number only
 // @route   POST /api/auth/send-otp
 // @access  Public
 exports.sendOTP = async (req, res) => {
     const { aadharNumber } = req.body;
 
-    if (!aadharNumber || !/^\d{12}$/.test(aadharNumber)) {
+    if (!aadharNumber) {
+        return res.status(400).json({ success: false, message: 'Please provide Aadhar number' });
+    }
+
+    if (!/^\d{12}$/.test(aadharNumber)) {
         return res.status(400).json({ success: false, message: 'Please provide a valid 12-digit Aadhar number' });
     }
 
     try {
-        // In production: fetch mobile from Aadhar-linked DB / UIDAI API
-        // For now: we simulate the linked mobile as last 10 digits of aadhar
-        const linkedMobile = aadharNumber.slice(-10);
-
-        const otp = '123456'; // Fixed OTP for testing
+        const otp = '123456'; // TODO: replace with real SMS OTP service
         const otpExpire = new Date(Date.now() + 10 * 60 * 1000);
 
         let user = await User.findOne({ aadharNumber });
         if (!user) {
-            user = await User.create({ aadharNumber, mobile: linkedMobile });
+            user = await User.create({ aadharNumber });
         }
 
         user.otp = otp;
         user.otpExpire = otpExpire;
         await user.save();
 
-        console.log(`OTP for Aadhar ${aadharNumber} (linked mobile ${linkedMobile}): ${otp}`);
+        console.log(`OTP for Aadhar ${aadharNumber}: ${otp}`);
 
         res.status(200).json({
             success: true,
-            message: `OTP sent to Aadhar-linked mobile number ending in ...${linkedMobile.slice(-4)}`,
-            // Only expose in development
-            ...(process.env.NODE_ENV === 'development' && { otp, linkedMobile })
+            message: 'OTP sent to your Aadhar-linked mobile number',
+            ...(process.env.NODE_ENV === 'development' && { otp })
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-// @desc    Verify OTP using Aadhar Number
+// @desc    Verify OTP
 // @route   POST /api/auth/verify-otp
 // @access  Public
 exports.verifyOTP = async (req, res) => {
@@ -62,7 +61,7 @@ exports.verifyOTP = async (req, res) => {
         const user = await User.findOne({ aadharNumber });
 
         if (!user) {
-            return res.status(404).json({ success: false, message: 'No user found with this Aadhar number' });
+            return res.status(404).json({ success: false, message: 'User not found' });
         }
 
         if (user.otp !== otp || user.otpExpire < Date.now()) {
@@ -77,12 +76,12 @@ exports.verifyOTP = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            message: 'OTP verified successfully. Please complete KYC to activate your account.',
+            message: 'Login successful',
             user: {
                 id: user._id,
-                mobile: user.mobile,
                 aadharNumber: user.aadharNumber,
                 name: user.name,
+                email: user.email,
                 role: user.role,
                 isKycVerified: user.isKycVerified
             },
@@ -92,9 +91,10 @@ exports.verifyOTP = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
 // @desc    Register Admin
 // @route   POST /api/auth/admin/register
-// @access  Public (Should be protected or restricted in production)
+// @access  Public
 exports.registerAdmin = async (req, res) => {
     const { name, email, mobile, password } = req.body;
 
@@ -103,8 +103,8 @@ exports.registerAdmin = async (req, res) => {
     }
 
     try {
-        const userExists = await User.findOne({ 
-            $or: [{ mobile }, { email }] 
+        const userExists = await User.findOne({
+            $or: [{ mobile }, { email }]
         });
 
         if (userExists) {
@@ -148,14 +148,12 @@ exports.adminLogin = async (req, res) => {
     }
 
     try {
-        // Find user by email and include password
         const user = await User.findOne({ email }).select('+password');
 
         if (!user || user.role !== 'admin') {
             return res.status(401).json({ success: false, message: 'Invalid credentials or not an admin' });
         }
 
-        // Check password
         const isMatch = await user.matchPassword(password);
         if (!isMatch) {
             return res.status(401).json({ success: false, message: 'Invalid credentials' });

@@ -1,4 +1,6 @@
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const morgan = require('morgan');
@@ -18,6 +20,30 @@ startInstallmentScheduler();
 
 
 const app = express();
+const server = http.createServer(app);
+
+const io = new Server(server, {
+    cors: {
+        origin: '*',
+        methods: ['GET', 'POST']
+    }
+});
+
+// Store io instance globally so controllers can emit
+app.set('io', io);
+
+// Socket.IO connection handler
+io.on('connection', (socket) => {
+    // Customer joins their own room using userId
+    socket.on('join', (userId) => {
+        socket.join(userId);
+        console.log(`User ${userId} joined socket room`);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('Socket disconnected:', socket.id);
+    });
+});
 
 // Middleware
 app.use(express.json());
@@ -86,6 +112,6 @@ app.use('/api', require('./routes/testRoutes'));
 // Port
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });

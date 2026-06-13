@@ -61,7 +61,7 @@ const bookingSchema = new mongoose.Schema({
     },
     payment_method: {
         type: String,
-        enum: ['online', 'cash', 'wallet', 'other'],
+        enum: ['online', 'cash', 'wallet', 'installments', 'other'],
         default: 'online'
     },
     booking_status: {
@@ -76,6 +76,12 @@ const bookingSchema = new mongoose.Schema({
         type: String,
     },
     transaction_id: {
+        type: String,
+    },
+    razorpay_order_id: {
+        type: String,
+    },
+    razorpay_payment_id: {
         type: String,
     },
     actual_return_date: {

@@ -39,6 +39,10 @@ exports.createVehicle = async (req, res) => {
 
         const vehicle = await Vehicle.create(data);
 
+        if (req.app.get('io')) {
+            req.app.get('io').emit('admin_data_changed');
+        }
+
         res.status(201).json({ success: true, data: vehicle });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
@@ -50,11 +54,14 @@ exports.createVehicle = async (req, res) => {
 // @access  Public
 exports.getAllVehicles = async (req, res) => {
     try {
-        const { franchiseId } = req.query;
+        const { franchiseId, category } = req.query;
         let query = {};
         
         if (franchiseId) {
             query.franchise = franchiseId;
+        }
+        if (category) {
+            query.category = category;
         }
 
         const Booking = require('../models/bookingModel');
@@ -134,6 +141,10 @@ exports.updateVehicle = async (req, res) => {
             runValidators: true
         });
 
+        if (req.app.get('io')) {
+            req.app.get('io').emit('admin_data_changed');
+        }
+
         res.status(200).json({ success: true, data: vehicle });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
@@ -157,6 +168,10 @@ exports.deleteVehicle = async (req, res) => {
         vehicle.images.forEach(img => deleteFile(img));
 
         await vehicle.deleteOne();
+
+        if (req.app.get('io')) {
+            req.app.get('io').emit('admin_data_changed');
+        }
 
         res.status(200).json({ success: true, message: 'Vehicle and its data deleted successfully' });
     } catch (error) {
@@ -182,6 +197,10 @@ exports.assignVehicle = async (req, res) => {
         vehicle.franchise = franchiseId || null;
         await vehicle.save();
 
+        if (req.app.get('io')) {
+            req.app.get('io').emit('admin_data_changed');
+        }
+
         res.status(200).json({ 
             success: true, 
             message: franchiseId ? 'Vehicle assigned to franchise successfully' : 'Vehicle unassigned from franchise',
@@ -197,8 +216,14 @@ exports.assignVehicle = async (req, res) => {
 // @access  Private/Franchise
 exports.getMyFranchiseVehicles = async (req, res) => {
     try {
+        const { category } = req.query;
+        let query = { franchise: req.franchise.id };
+        if (category) {
+            query.category = category;
+        }
+
         // req.franchise is set by franchiseProtect middleware
-        const vehicles = await Vehicle.find({ franchise: req.franchise.id }).sort('-createdAt');
+        const vehicles = await Vehicle.find(query).sort('-createdAt').populate('category', 'name');
         
         res.status(200).json({ 
             success: true, 
@@ -280,6 +305,10 @@ exports.createFranchiseVehicle = async (req, res) => {
         }
 
         const vehicle = await Vehicle.create(data);
+
+        if (req.app.get('io')) {
+            req.app.get('io').emit('admin_data_changed');
+        }
 
         res.status(201).json({ success: true, data: vehicle });
     } catch (error) {

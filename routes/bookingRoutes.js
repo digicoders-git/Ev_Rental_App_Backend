@@ -19,12 +19,16 @@ const {
     rejectBooking,
     setupInstallments,
     payInstallment,
-    addDamageCharge
+    addDamageCharge,
+    payBookingWithWallet,
+    payInstallmentWithWallet,
+    verifyPayment
 } = require('../controller/bookingController');
 const { protect, admin, franchiseProtect, anyProtect } = require('../middleware/authMiddleware');
 
 // Public/User Routes
 router.post('/', anyProtect, createBooking);
+router.post('/verify-payment', anyProtect, verifyPayment);
 router.get('/my', protect, getMyBookings);
 router.get('/dues/my', protect, getMyDues);
 
@@ -53,8 +57,12 @@ router.patch('/:id/status', anyProtect, updateBookingStatus);
 // Installment Routes
 router.post('/:id/installments/setup', anyProtect, setupInstallments);
 router.post('/:id/installments/:instId/pay', anyProtect, payInstallment);
+router.post('/:id/installments/:instId/pay-with-wallet', protect, payInstallmentWithWallet);
 
 // Damage / Extra Charge Routes
 router.post('/:id/damage-charge', anyProtect, addDamageCharge);
+
+// Wallet Payments
+router.post('/:id/pay-with-wallet', protect, payBookingWithWallet);
 
 module.exports = router;

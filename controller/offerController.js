@@ -1,4 +1,5 @@
 const Offer = require('../models/offerModel');
+const User = require('../models/userModel');
 
 // @desc    Create new Offer
 // @route   POST /api/offers
@@ -152,6 +153,61 @@ exports.toggleOfferStatus = async (req, res) => {
         await offer.save();
 
         res.status(200).json({ success: true, message: `Offer ${offer.status}`, data: offer });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Claim an Offer
+// @route   POST /api/offers/claim
+// @access  Private
+exports.claimOffer = async (req, res) => {
+    try {
+        const { offerId } = req.body;
+        if (!offerId) {
+            return res.status(400).json({ success: false, message: 'Please provide an offerId' });
+        }
+
+        const offer = await Offer.findById(offerId);
+        if (!offer) {
+            return res.status(404).json({ success: false, message: 'Offer not found' });
+        }
+
+        if (offer.status !== 'active') {
+            return res.status(400).json({ success: false, message: 'Offer is not active' });
+        }
+
+        const user = await User.findById(req.user._id);
+        
+        // Check if already claimed
+        const alreadyClaimed = user.claimed_offers.find(
+            (c) => c.offer.toString() === offerId.toString()
+        );
+
+        if (alreadyClaimed) {
+            return res.status(400).json({ success: false, message: 'You have already claimed this offer' });
+        }
+
+        user.claimed_offers.push({ offer: offerId, status: 'claimed' });
+        await user.save();
+
+        res.status(200).json({ success: true, message: 'Offer claimed successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Get My Claimed Offers
+// @route   GET /api/offers/my-claims
+// @access  Private
+exports.getMyClaimedOffers = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id).populate({
+            path: 'claimed_offers.offer',
+            model: 'Offer'
+        });
+
+        res.status(200).json({ success: true, count: user.claimed_offers.length, data: user.claimed_offers });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

@@ -20,6 +20,10 @@ const userSchema = new mongoose.Schema({
         type: String,
         select: false
     },
+    profile_picture: {
+        type: String,
+        default: ""
+    },
     role: {
         type: String,
         enum: ['user', 'admin'],
@@ -71,7 +75,26 @@ const userSchema = new mongoose.Schema({
     fcm_token: {
         type: String,
         default: null
-    }
+    },
+    wallet_balance: {
+        type: Number,
+        default: 0
+    },
+    claimed_offers: [{
+        offer: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Offer'
+        },
+        status: {
+            type: String,
+            enum: ['claimed', 'used'],
+            default: 'claimed'
+        },
+        claimedAt: {
+            type: Date,
+            default: Date.now
+        }
+    }]
 }, {
     timestamps: true
 });

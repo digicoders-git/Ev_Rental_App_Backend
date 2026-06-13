@@ -68,6 +68,10 @@ exports.updateProfile = async (req, res) => {
         if (city) user.city = city;
         if (bio) user.bio = bio;
 
+        if (req.file) {
+            user.profile_picture = `/uploads/${req.file.filename}`;
+        }
+
         const updatedUser = await user.save();
 
         res.status(200).json({

@@ -2,9 +2,12 @@ const Booking = require('../models/bookingModel');
 const Vehicle = require('../models/vehicleModel');
 const RentalPlan = require('../models/planModel');
 const User = require('../models/userModel');
+const WalletTransaction = require('../models/walletTransactionModel');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const Razorpay = require('razorpay');
 const { sendNotification } = require('../utils/notificationHelper');
 
 // @desc    Create new Booking
@@ -91,9 +94,78 @@ exports.createBooking = async (req, res) => {
             related_id: booking._id
         });
 
-        res.status(201).json({ success: true, data: booking });
+        let razorpayOrderData = null;
+
+        if (payment_method === 'online') {
+            const razorpay = new Razorpay({
+                key_id: process.env.RAZORPAY_KEY_ID,
+                key_secret: process.env.RAZORPAY_KEY_SECRET
+            });
+
+            const amountInPaise = Math.round(grand_total * 100);
+            const options = {
+                amount: amountInPaise,
+                currency: 'INR',
+                receipt: booking._id.toString()
+            };
+
+            const order = await razorpay.orders.create(options);
+            booking.razorpay_order_id = order.id;
+            await booking.save();
+
+            razorpayOrderData = {
+                razorpay_order_id: order.id,
+                razorpay_key: process.env.RAZORPAY_KEY_ID,
+                amount_in_paise: amountInPaise
+            };
+        }
+
+        res.status(201).json({ 
+            success: true, 
+            data: booking,
+            ...razorpayOrderData
+        });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Verify Razorpay Payment
+// @route   POST /api/bookings/verify-payment
+// @access  Private
+exports.verifyPayment = async (req, res) => {
+    try {
+        const { booking_id, razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
+
+        const body = razorpay_order_id + "|" + razorpay_payment_id;
+        const expectedSignature = crypto
+            .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+            .update(body.toString())
+            .digest("hex");
+
+        if (expectedSignature !== razorpay_signature) {
+            return res.status(400).json({ success: false, message: 'Invalid signature. Payment verification failed.' });
+        }
+
+        const booking = await Booking.findById(booking_id);
+        if (!booking) {
+            return res.status(404).json({ success: false, message: 'Booking not found' });
+        }
+
+        booking.payment_status = 'paid';
+        booking.booking_status = 'confirmed';
+        booking.transaction_id = razorpay_payment_id;
+        booking.razorpay_payment_id = razorpay_payment_id;
+        booking.total_paid = booking.grand_total;
+        await booking.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Payment verified and booking confirmed successfully',
+            data: booking
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -551,97 +623,146 @@ exports.downloadReceipt = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Booking not found' });
         }
 
-        // Create PDF Document
-        const doc = new PDFDocument({ margin: 50 });
-        let filename = `Receipt_${booking.booking_id}.pdf`;
+        // Create PDF Document (A4 size is default)
+        const doc = new PDFDocument({ margin: 0, size: 'A4' });
+        let filename = `Invoice_${booking.booking_id}.pdf`;
 
-        // Set response headers
         res.setHeader('Content-disposition', `attachment; filename=${filename}`);
         res.setHeader('Content-type', 'application/pdf');
-
-        // Pipe the PDF into the response
         doc.pipe(res);
 
-        // --- PDF CONTENT DESIGN ---
+        // --- PDF CONTENT DESIGN (EcoRide) ---
+
+        const pageWidth = doc.page.width;
+        const pageHeight = doc.page.height;
+
+        // 1. Wavy Header Background
+        doc.save();
+        doc.fillColor('#18A0A0');
+        doc.moveTo(0, 0)
+           .lineTo(pageWidth, 0)
+           .lineTo(pageWidth, 120)
+           .quadraticCurveTo(pageWidth / 2, 180, 0, 70)
+           .fill();
         
-        // Header
-        doc.fontSize(25).bold = true;
-        doc.text('EV RENTAL RECEIPT', { align: 'center' });
-        doc.moveDown();
-        doc.fontSize(12).text(`Receipt ID: ${booking.booking_id}`, { align: 'right' });
-        doc.text(`Date: ${new Date().toLocaleDateString()}`, { align: 'right' });
-        doc.moveDown();
+        doc.fillColor('#333333');
+        doc.moveTo(0, 0)
+           .lineTo(pageWidth * 0.4, 0)
+           .quadraticCurveTo(pageWidth * 0.3, 100, 0, 50)
+           .fill();
+        doc.restore();
 
-        // Customer Details
-        doc.fontSize(16).text('Customer Details', { underline: true });
-        doc.fontSize(12).text(`Name: ${booking.user.name}`);
-        doc.text(`Mobile: ${booking.user.mobile}`);
-        doc.text(`Email: ${booking.user.email}`);
-        doc.moveDown();
+        // 2. INVOICE Title
+        doc.fontSize(45).font('Helvetica-Bold').fillColor('#333333').text('INVOICE', 50, 140);
 
-        // Vehicle Details
-        doc.fontSize(16).text('Vehicle Details', { underline: true });
-        doc.fontSize(12).text(`Vehicle: ${booking.vehicle.brand} ${booking.vehicle.vehicle_name}`);
-        doc.text(`Registration: ${booking.vehicle.registration_number}`);
-        doc.text(`Vehicle ID: ${booking.vehicle.vehicle_id}`);
-        doc.moveDown();
+        // 3. Billed To
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#333333').text('Billed to:', 380, 140);
+        doc.fontSize(12).text(booking.user?.name || 'Customer', 380, 155);
+        doc.fontSize(10).font('Helvetica').fillColor('#666666');
+        doc.text(booking.user?.mobile || '', 380, 170);
+        doc.text(booking.user?.email || '', 380, 185);
 
-        // Booking Period
-        doc.fontSize(16).text('Rental Period', { underline: true });
-        doc.fontSize(12).text(`Pickup: ${new Date(booking.start_date).toLocaleString()}`);
-        doc.text(`Scheduled Return: ${new Date(booking.end_date).toLocaleString()}`);
-        if(booking.actual_return_date) {
-            doc.text(`Actual Return: ${new Date(booking.actual_return_date).toLocaleString()}`);
+        // 4. Invoice Meta Info
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#333333');
+        doc.text('INVOICE NO:', 50, 230);
+        doc.font('Helvetica').fillColor('#666666').text(booking.booking_id, 120, 230);
+
+        doc.font('Helvetica-Bold').fillColor('#333333').text('DATE:', 220, 230);
+        doc.font('Helvetica').fillColor('#666666').text(new Date().toLocaleDateString(), 260, 230);
+
+        doc.font('Helvetica-Bold').fillColor('#333333').text('DUE DATE:', 380, 230);
+        doc.font('Helvetica').fillColor('#666666').text(new Date(booking.end_date).toLocaleDateString(), 440, 230);
+
+        // 5. Service Table Header
+        const tableTop = 280;
+        doc.rect(50, tableTop, pageWidth - 100, 35).fill('#333333');
+        
+        doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(11);
+        doc.text('SERVICE', 70, tableTop + 12);
+        doc.text('QTY', 320, tableTop + 12);
+        doc.text('PRICE', 400, tableTop + 12);
+        doc.text('TOTAL', 480, tableTop + 12, { width: 60, align: 'right' });
+
+        // 6. Service Line Items
+        let currentY = tableTop + 55;
+        doc.font('Helvetica').fillColor('#666666').fontSize(11);
+
+        const drawRow = (service, qty, price, total) => {
+            doc.text(service, 70, currentY);
+            doc.text(qty.toString(), 320, currentY);
+            doc.text(`INR ${price.toFixed(2)}`, 400, currentY); 
+            doc.text(`INR ${total.toFixed(2)}`, 480, currentY, { width: 60, align: 'right' });
+            
+            // Draw a light bottom line
+            doc.moveTo(50, currentY + 20).lineTo(pageWidth - 50, currentY + 20).strokeColor('#EEEEEE').lineWidth(1).stroke();
+            currentY += 40;
+        };
+
+        // Base Plan
+        const planName = booking.plan ? booking.plan.plan_name : 'Rental Plan';
+        const baseAmount = booking.total_amount || 0;
+        drawRow(`EV Rental - ${planName}`, 1, baseAmount, baseAmount);
+
+        if (booking.security_deposit > 0) {
+            drawRow('Security Deposit', 1, booking.security_deposit, booking.security_deposit);
         }
-        doc.moveDown();
-
-        // Payment Summary Table Header
-        doc.fontSize(16).text('Payment Summary', { underline: true });
-        doc.moveDown(0.5);
         
-        const startX = 50;
-        let currentY = doc.y;
+        if (booking.late_fee > 0) {
+            drawRow('Late Fee', 1, booking.late_fee, booking.late_fee);
+        }
 
-        doc.fontSize(12);
-        doc.text('Description', startX, currentY);
-        doc.text('Amount', startX + 350, currentY, { align: 'right' });
-        doc.moveTo(startX, currentY + 15).lineTo(550, currentY + 15).stroke();
-        currentY += 25;
+        if (booking.discount_amount > 0) {
+            doc.text('Discount Applied', 70, currentY);
+            doc.text('1', 320, currentY);
+            doc.text(`-INR ${booking.discount_amount.toFixed(2)}`, 400, currentY);
+            doc.text(`-INR ${booking.discount_amount.toFixed(2)}`, 480, currentY, { width: 60, align: 'right' });
+            doc.moveTo(50, currentY + 20).lineTo(pageWidth - 50, currentY + 20).strokeColor('#EEEEEE').lineWidth(1).stroke();
+            currentY += 40;
+        }
 
-        // Line Items
-        const totalBase = booking.total_amount || 0;
-        const security = booking.security_deposit || 0;
-        const late = booking.late_fee || 0;
-        const discount = booking.discount_amount || 0;
+        // 7. Total Section
+        currentY += 20;
+        doc.font('Helvetica-Bold').fillColor('#333333').fontSize(14);
+        doc.text('TOTAL', 400, currentY);
+        doc.text(`INR ${booking.grand_total.toFixed(2)}`, 480, currentY, { width: 60, align: 'right' });
 
-        const items = [
-            { label: 'Rental Base Amount', value: totalBase },
-            { label: 'Security Deposit', value: security },
-            { label: 'Late Fee', value: late },
-            { label: 'Discount', value: -discount }
-        ];
+        // 8. Footer (Notes & Payment Method)
+        currentY += 60;
+        doc.fontSize(11);
+        doc.font('Helvetica-Bold').text('Payment method: ', 50, currentY, { continued: true })
+           .font('Helvetica').fillColor('#666666').text(booking.payment_method || 'Online / Wallet');
+        
+        currentY += 20;
+        doc.font('Helvetica-Bold').fillColor('#333333').text('Note: ', 50, currentY, { continued: true })
+           .font('Helvetica').fillColor('#666666').text('Thank you for choosing EcoRide!');
 
-        items.forEach(item => {
-            doc.text(item.label, startX, currentY);
-            doc.text(`INR ${item.value.toFixed(2)}`, startX + 350, currentY, { align: 'right' });
-            currentY += 20;
-        });
+        // 9. EcoRide Branding Footer
+        const footerY = pageHeight - 80;
+        
+        // Try to load logo
+        try {
+            const logoPath = path.join(__dirname, '../uploads/logo.png');
+            if (fs.existsSync(logoPath)) {
+                doc.image(logoPath, 50, footerY - 15, { width: 40 });
+            }
+        } catch (error) {
+            // Ignore if logo not found
+        }
 
-        // Total
-        doc.moveTo(startX, currentY).lineTo(550, currentY).stroke();
-        currentY += 10;
-        doc.fontSize(14).text('Total Paid', startX, currentY);
-        doc.text(`INR ${booking.grand_total.toFixed(2)}`, startX + 350, currentY, { align: 'right' });
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#333333').text('ECORIDE', 100, footerY);
+        doc.fontSize(9).font('Helvetica').fillColor('#666666').text('EV RENTALS', 100, footerY + 15);
 
-        doc.moveDown(2);
-        doc.fontSize(10).text('Thank you for choosing EV Rental!', { align: 'center', italic: true });
+        doc.text('+91 9876543210', 300, footerY);
+        doc.text('support@ecoride.com', 300, footerY + 15);
+
+        doc.text('123 Green Avenue', 450, footerY);
+        doc.text('Eco City, EC 12345', 450, footerY + 15);
 
         // Finalize PDF
         doc.end();
 
     } catch (error) {
-        console.error('PDF Generation Error:', error);
-        res.status(500).json({ success: false, message: 'Could not generate receipt' });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -943,5 +1064,140 @@ exports.payInstallment = async (req, res) => {
         });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Pay full or partial booking amount via Wallet (Customer)
+// @route   POST /api/bookings/:id/pay-with-wallet
+// @access  Private/User
+exports.payBookingWithWallet = async (req, res) => {
+    try {
+        const { amount } = req.body;
+        const bookingId = req.params.id;
+        const userId = req.user.id;
+
+        if (!amount || Number(amount) <= 0) {
+            return res.status(400).json({ success: false, message: 'Please provide a valid positive amount' });
+        }
+
+        const booking = await Booking.findById(bookingId);
+        if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+        
+        if (booking.user.toString() !== userId) {
+            return res.status(403).json({ success: false, message: 'Not authorized to pay for this booking' });
+        }
+
+        const user = await User.findById(userId);
+        if (user.wallet_balance < Number(amount)) {
+            return res.status(400).json({ success: false, message: 'Insufficient wallet balance' });
+        }
+
+        // Deduct from wallet
+        user.wallet_balance -= Number(amount);
+        await user.save();
+
+        // Record wallet transaction
+        await WalletTransaction.create({
+            user: userId,
+            amount: Number(amount),
+            type: 'debit',
+            description: `Payment for Booking #${booking.booking_id}`,
+            performed_by: 'user'
+        });
+
+        // Update booking
+        booking.total_paid += Number(amount);
+        booking.payment_method = 'wallet';
+
+        if (booking.total_paid >= booking.grand_total) {
+            booking.payment_status = 'paid';
+        } else if (booking.total_paid > 0) {
+            booking.payment_status = 'partially_paid';
+        }
+
+        await booking.save();
+
+        res.status(200).json({
+            success: true,
+            message: `Payment of ₹${amount} made successfully via Wallet`,
+            data: booking
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Pay a specific installment via Wallet (Customer)
+// @route   POST /api/bookings/:id/installments/:instId/pay-with-wallet
+// @access  Private/User
+exports.payInstallmentWithWallet = async (req, res) => {
+    try {
+        const bookingId = req.params.id;
+        const instId = req.params.instId;
+        const userId = req.user.id;
+
+        const booking = await Booking.findById(bookingId);
+        if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+        if (booking.user.toString() !== userId) {
+            return res.status(403).json({ success: false, message: 'Not authorized' });
+        }
+
+        const inst = booking.payment_installments.id(instId);
+        if (!inst) return res.status(404).json({ success: false, message: 'Installment not found' });
+        
+        if (inst.status === 'paid') {
+            return res.status(400).json({ success: false, message: 'Installment already paid' });
+        }
+
+        const amountToPay = inst.amount;
+        const user = await User.findById(userId);
+
+        if (user.wallet_balance < amountToPay) {
+            return res.status(400).json({ success: false, message: 'Insufficient wallet balance to pay this installment' });
+        }
+
+        // Deduct from wallet
+        user.wallet_balance -= amountToPay;
+        await user.save();
+
+        // Log transaction
+        await WalletTransaction.create({
+            user: userId,
+            amount: amountToPay,
+            type: 'debit',
+            description: `Installment #${inst.installment_no} payment for Booking #${booking.booking_id}`,
+            performed_by: 'user'
+        });
+
+        // Mark Installment Paid
+        inst.status = 'paid';
+        inst.paid_date = new Date();
+        inst.payment_method = 'wallet';
+        
+        booking.total_paid += amountToPay;
+        booking.payment_method = 'wallet';
+
+        if (booking.total_paid >= booking.grand_total) {
+            booking.payment_status = 'paid';
+        } else if (booking.total_paid > 0) {
+            booking.payment_status = 'partially_paid';
+        }
+
+        // Recalculate overdue statuses
+        const now = new Date();
+        booking.payment_installments.forEach(i => {
+            if (i.status === 'pending' && new Date(i.due_date) < now) i.status = 'overdue';
+        });
+
+        await booking.save();
+
+        res.status(200).json({
+            success: true,
+            message: `Installment #${inst.installment_no} of ₹${amountToPay} paid via Wallet`,
+            data: booking.payment_installments
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
 };

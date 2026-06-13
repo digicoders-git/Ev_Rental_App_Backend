@@ -7,13 +7,14 @@ const {
     deleteCategory 
 } = require('../controller/categoryController');
 const { protect, admin } = require('../middleware/authMiddleware');
+const upload = require('../middleware/uploadMiddleware');
 
 router.route('/')
     .get(getCategories)
-    .post(createCategory); // Temporary remove protect, admin for testing
+    .post(upload.single('image'), createCategory); // Temporary remove protect, admin for testing
 
 router.route('/:id')
-    .put(protect, admin, updateCategory)
+    .put(protect, admin, upload.single('image'), updateCategory)
     .delete(protect, admin, deleteCategory);
 
 module.exports = router;

@@ -19,7 +19,11 @@ exports.getCategories = async (req, res) => {
 exports.createCategory = async (req, res) => {
     try {
         console.log('Creating category with body:', req.body);
-        const { name, description, image } = req.body;
+        let { name, description, image } = req.body;
+        
+        if (req.file) {
+            image = req.file.path.replace(/\\/g, '/');
+        }
         
         if (!name) {
             return res.status(400).json({ success: false, message: 'Category name is required' });
@@ -32,6 +36,11 @@ exports.createCategory = async (req, res) => {
 
         const category = await Category.create({ name, description, image });
         console.log('Category created:', category);
+
+        if (req.app.get('io')) {
+            req.app.get('io').emit('admin_data_changed');
+        }
+
         res.status(201).json({ success: true, data: category });
     } catch (error) {
         console.error('Error creating category:', error);
@@ -47,13 +56,22 @@ exports.createCategory = async (req, res) => {
 // @access  Private/Admin
 exports.updateCategory = async (req, res) => {
     try {
-        const category = await Category.findByIdAndUpdate(req.params.id, req.body, {
+        let updateData = { ...req.body };
+        if (req.file) {
+            updateData.image = req.file.path.replace(/\\/g, '/');
+        }
+
+        const category = await Category.findByIdAndUpdate(req.params.id, updateData, {
             new: true,
             runValidators: true
         });
 
         if (!category) {
             return res.status(404).json({ success: false, message: 'Category not found' });
+        }
+
+        if (req.app.get('io')) {
+            req.app.get('io').emit('admin_data_changed');
         }
 
         res.status(200).json({ success: true, data: category });
@@ -83,6 +101,11 @@ exports.deleteCategory = async (req, res) => {
         }
 
         await category.deleteOne();
+
+        if (req.app.get('io')) {
+            req.app.get('io').emit('admin_data_changed');
+        }
+
         res.status(200).json({ success: true, message: 'Category deleted' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

@@ -14,10 +14,11 @@ const {
     triggerInstallmentNotifications
 } = require('../controller/userController');
 const { protect, admin, anyProtect } = require('../middleware/authMiddleware');
+const upload = require('../middleware/uploadMiddleware');
 
 // User routes
 router.get('/profile', protect, getProfile);
-router.put('/profile', protect, updateProfile);
+router.put('/profile', protect, upload.single('profile_picture'), updateProfile);
 router.get('/credit-score', protect, getCreditScore);
 router.put('/change-password', protect, changePassword);
 router.post('/fcm-token', protect, saveFcmToken);

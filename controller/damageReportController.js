@@ -28,6 +28,19 @@ exports.submitDamageReport = async (req, res) => {
             photos
         });
 
+        // Send confirmation push notification to user
+        const User = require('../models/userModel');
+        const customer = await User.findById(req.user._id);
+        if (customer && customer.fcm_token) {
+            const { sendPushNotification } = require('../utils/fcmHelper');
+            const pushTitle = 'Damage Report Submitted';
+            const pushMessage = 'We have received your damage report. Our team will review it shortly.';
+            await sendPushNotification(customer.fcm_token, pushTitle, pushMessage, {
+                type: 'damage_report_submit',
+                report_id: report._id.toString()
+            }).catch(err => console.log('FCM Error in damage report submit:', err));
+        }
+
         res.status(201).json({
             success: true,
             data: report,
@@ -101,6 +114,21 @@ exports.updateDamageReportStatus = async (req, res) => {
         const io = req.app.get('io');
         if (io && report.user) {
             io.to(report.user.toString()).emit('damage_report_updated', report);
+        }
+
+        // Send push notification to user
+        if (report.user) {
+            const User = require('../models/userModel');
+            const customer = await User.findById(report.user);
+            if (customer && customer.fcm_token) {
+                const { sendPushNotification } = require('../utils/fcmHelper');
+                const pushTitle = 'Damage Report Updated';
+                const pushMessage = `Your damage report status is now: ${status || report.status}. ${admin_notes ? 'Notes: ' + admin_notes : ''}`;
+                await sendPushNotification(customer.fcm_token, pushTitle, pushMessage, {
+                    type: 'damage_report_update',
+                    report_id: report._id.toString()
+                }).catch(err => console.log('FCM Error in damage report update:', err));
+            }
         }
 
         res.status(200).json({

@@ -9,7 +9,6 @@ const path = require('path');
 const crypto = require('crypto');
 const Razorpay = require('razorpay');
 const { sendNotification } = require('../utils/notificationHelper');
-const { sendPushNotification } = require('../utils/fcmHelper');
 
 // @desc    Create new Booking
 // @route   POST /api/bookings
@@ -94,18 +93,6 @@ exports.createBooking = async (req, res) => {
             type: 'booking',
             related_id: booking._id
         });
-
-        // Notify User via FCM
-        if (bookingUserId) {
-            const bookingUser = await User.findById(bookingUserId);
-            if (bookingUser && bookingUser.fcm_token) {
-                await sendPushNotification(
-                    bookingUser.fcm_token,
-                    'Booking Created',
-                    `Your booking #${booking.booking_id} has been created successfully.`
-                );
-            }
-        }
 
         let razorpayOrderData = null;
 
@@ -389,7 +376,39 @@ exports.updateBookingStatus = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Not authorized to update this booking' });
         }
 
-        if (booking_status) booking.booking_status = booking_status;
+        if (booking_status && booking.booking_status !== booking_status) {
+            booking.booking_status = booking_status;
+            
+            // Send push notification to the customer
+            const customer = await User.findById(booking.user);
+            if (customer && customer.fcm_token) {
+                const { sendPushNotification } = require('../utils/fcmHelper');
+                
+                let pushTitle = 'Booking Update';
+                let pushMessage = `Your booking status has been updated to: ${booking_status}`;
+                
+                if (booking_status === 'confirmed') {
+                    pushTitle = '🎉 Booking Confirmed!';
+                    pushMessage = 'Your vehicle booking has been confirmed by the admin.';
+                } else if (booking_status === 'ongoing') {
+                    pushTitle = '🚗 Ride Started';
+                    pushMessage = 'Your ride is now active. Drive safe!';
+                } else if (booking_status === 'completed') {
+                    pushTitle = '🏁 Ride Completed';
+                    pushMessage = 'Your ride has been marked as completed. Thank you for riding with us!';
+                } else if (booking_status === 'cancelled') {
+                    pushTitle = '❌ Booking Cancelled';
+                    pushMessage = 'Your booking was cancelled.';
+                }
+
+                await sendPushNotification(customer.fcm_token, pushTitle, pushMessage, {
+                    type: 'booking_status',
+                    booking_id: booking._id.toString(),
+                    status: booking_status
+                }).catch(err => console.log('FCM Error in booking:', err));
+            }
+        }
+
         if (payment_status) {
             booking.payment_status = payment_status;
             // If marked as paid, assume the pending grand_total is paid
@@ -400,18 +419,6 @@ exports.updateBookingStatus = async (req, res) => {
         if (transaction_id) booking.transaction_id = transaction_id;
 
         await booking.save();
-
-        // Notify User via FCM
-        if (booking_status) {
-            const bookingUser = await User.findById(booking.user);
-            if (bookingUser && bookingUser.fcm_token) {
-                await sendPushNotification(
-                    bookingUser.fcm_token,
-                    'Booking Status Updated',
-                    `Your booking #${booking.booking_id} status is now ${booking_status}.`
-                );
-            }
-        }
 
         res.status(200).json({ success: true, message: 'Booking status updated', data: booking });
     } catch (error) {
@@ -817,16 +824,6 @@ exports.cancelBooking = async (req, res) => {
         booking.cancellation_reason = reason || "User cancelled";
         
         await booking.save();
-
-        // Notify User via FCM
-        const bookingUser = await User.findById(booking.user);
-        if (bookingUser && bookingUser.fcm_token) {
-            await sendPushNotification(
-                bookingUser.fcm_token,
-                'Booking Cancelled',
-                `Your booking #${booking.booking_id} has been cancelled.`
-            );
-        }
 
         res.status(200).json({ success: true, message: 'Booking cancelled successfully', data: booking });
     } catch (error) {

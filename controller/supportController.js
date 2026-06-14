@@ -93,14 +93,27 @@ exports.updateTicket = async (req, res) => {
         await ticket.save();
 
         // Notify User
+        const messageStr = `Your ticket #${ticket.ticket_id} has been ${status || 'updated'}. Reply: ${admin_reply || 'Check details'}`;
         await sendNotification({
             recipient: ticket.user,
             recipient_role: 'user',
             title: 'Support Ticket Update',
-            message: `Your ticket #${ticket.ticket_id} has been ${status || 'updated'}. Reply: ${admin_reply || 'Check details'}`,
+            message: messageStr,
             type: 'system',
             related_id: ticket._id
         });
+
+        if (ticket.user) {
+            const User = require('../models/userModel');
+            const customer = await User.findById(ticket.user);
+            if (customer && customer.fcm_token) {
+                const { sendPushNotification } = require('../utils/fcmHelper');
+                await sendPushNotification(customer.fcm_token, 'Support Ticket Update', messageStr, {
+                    type: 'ticket_update',
+                    ticket_id: ticket._id.toString()
+                }).catch(err => console.log('FCM Error in support:', err));
+            }
+        }
 
         res.status(200).json({
             success: true,

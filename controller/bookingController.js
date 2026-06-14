@@ -784,7 +784,7 @@ exports.downloadReceipt = async (req, res) => {
         doc.fontSize(12).font('Helvetica-Bold').fillColor('#333333').text('ECORIDE', 100, footerY);
         doc.fontSize(9).font('Helvetica').fillColor('#666666').text('EV RENTALS', 100, footerY + 15);
 
-        doc.text('+91 9876543210', 300, footerY);
+        doc.text('+91 70078 33947', 300, footerY);
         doc.text('support@ecoride.com', 300, footerY + 15);
 
         doc.text('123 Green Avenue', 450, footerY);

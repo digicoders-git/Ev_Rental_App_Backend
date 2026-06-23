@@ -8,38 +8,40 @@ const generateToken = (id) => {
     });
 };
 
-// @desc    Send OTP using Aadhar Number only
+// @desc    Send OTP using Mobile Number and Name
 // @route   POST /api/auth/send-otp
 // @access  Public
 exports.sendOTP = async (req, res) => {
-    const { aadharNumber } = req.body;
+    const { mobile, name } = req.body;
 
-    if (!aadharNumber) {
-        return res.status(400).json({ success: false, message: 'Please provide Aadhar number' });
+    if (!mobile) {
+        return res.status(400).json({ success: false, message: 'Please provide mobile number' });
     }
 
-    if (!/^\d{12}$/.test(aadharNumber)) {
-        return res.status(400).json({ success: false, message: 'Please provide a valid 12-digit Aadhar number' });
+    if (!/^\d{10}$/.test(mobile)) {
+        return res.status(400).json({ success: false, message: 'Please provide a valid 10-digit mobile number' });
     }
 
     try {
         const otp = '123456'; // TODO: replace with real SMS OTP service
         const otpExpire = new Date(Date.now() + 10 * 60 * 1000);
 
-        let user = await User.findOne({ aadharNumber });
+        let user = await User.findOne({ mobile });
         if (!user) {
-            user = await User.create({ aadharNumber });
+            user = await User.create({ mobile, name: name || "" });
+        } else if (name) {
+            user.name = name;
         }
 
         user.otp = otp;
         user.otpExpire = otpExpire;
         await user.save();
 
-        console.log(`OTP for Aadhar ${aadharNumber}: ${otp}`);
+        console.log(`OTP for Mobile ${mobile}: ${otp}`);
 
         res.status(200).json({
             success: true,
-            message: 'OTP sent to your Aadhar-linked mobile number',
+            message: 'OTP sent to your mobile number',
             ...(process.env.NODE_ENV === 'development' && { otp })
         });
     } catch (error) {
@@ -51,14 +53,14 @@ exports.sendOTP = async (req, res) => {
 // @route   POST /api/auth/verify-otp
 // @access  Public
 exports.verifyOTP = async (req, res) => {
-    const { aadharNumber, otp, fcm_token } = req.body;
+    const { mobile, otp, fcm_token } = req.body;
 
-    if (!aadharNumber || !otp) {
-        return res.status(400).json({ success: false, message: 'Please provide Aadhar number and OTP' });
+    if (!mobile || !otp) {
+        return res.status(400).json({ success: false, message: 'Please provide mobile number and OTP' });
     }
 
     try {
-        const user = await User.findOne({ aadharNumber });
+        const user = await User.findOne({ mobile });
 
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
@@ -79,7 +81,7 @@ exports.verifyOTP = async (req, res) => {
             message: 'Login successful',
             user: {
                 id: user._id,
-                aadharNumber: user.aadharNumber,
+                mobile: user.mobile,
                 name: user.name,
                 email: user.email,
                 role: user.role,

@@ -11,10 +11,7 @@ const { protect, admin, franchiseProtect, anyProtect } = require('../middleware/
 const upload = require('../middleware/uploadMiddleware');
 
 const kycUploadFields = upload.fields([
-    { name: 'aadharFront', maxCount: 1 },
-    { name: 'aadharBack', maxCount: 1 },
-    { name: 'panCard', maxCount: 1 },
-    { name: 'selfie', maxCount: 1 }
+    { name: 'document', maxCount: 1 }
 ]);
 
 // User routes

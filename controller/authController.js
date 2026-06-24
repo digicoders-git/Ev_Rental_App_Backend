@@ -94,6 +94,50 @@ exports.verifyOTP = async (req, res) => {
     }
 };
 
+// @desc    Direct Login / Signup (No OTP)
+// @route   POST /api/auth/login
+// @access  Public
+exports.directLogin = async (req, res) => {
+    const { mobile, name, fcm_token } = req.body;
+
+    if (!mobile) {
+        return res.status(400).json({ success: false, message: 'Please provide mobile number' });
+    }
+
+    if (!/^\d{10}$/.test(mobile)) {
+        return res.status(400).json({ success: false, message: 'Please provide a valid 10-digit mobile number' });
+    }
+
+    try {
+        let user = await User.findOne({ mobile });
+        if (!user) {
+            user = await User.create({ mobile, name: name || "", isVerified: true });
+        } else {
+            if (name) user.name = name;
+            user.isVerified = true;
+        }
+
+        if (fcm_token) user.fcm_token = fcm_token;
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Login successful',
+            user: {
+                id: user._id,
+                mobile: user.mobile,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                isKycVerified: user.isKycVerified
+            },
+            token: generateToken(user._id)
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // @desc    Register Admin
 // @route   POST /api/auth/admin/register
 // @access  Public

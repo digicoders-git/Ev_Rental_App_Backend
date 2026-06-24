@@ -17,7 +17,19 @@ const kycSchema = new mongoose.Schema({
         required: true,
         trim: true
     },
-    document: {
+    aadharFront: {
+        type: String,
+        required: true
+    },
+    aadharBack: {
+        type: String,
+        required: true
+    },
+    panCard: {
+        type: String,
+        required: true
+    },
+    selfie: {
         type: String,
         required: true
     },

@@ -39,8 +39,14 @@ exports.submitKYC = async (req, res) => {
 
         let existingKyc = await KYC.findOne({ user: userId });
 
-        if (!existingKyc && (!req.files || !req.files['document'])) {
-            return res.status(400).json({ success: false, message: 'KYC document file is required' });
+        if (!existingKyc && (
+            !req.files || 
+            !req.files['aadharFront'] || 
+            !req.files['aadharBack'] || 
+            !req.files['panCard'] || 
+            !req.files['selfie']
+        )) {
+            return res.status(400).json({ success: false, message: 'All 4 KYC document files (Aadhar Front, Aadhar Back, PAN Card, Selfie) are required.' });
         }
 
         const kycData = { 
@@ -50,12 +56,15 @@ exports.submitKYC = async (req, res) => {
             status: 'pending' 
         };
 
-        if (req.files && req.files['document']) {
-            if (existingKyc && existingKyc.document) {
-                deleteFile(existingKyc.document);
+        const fileFields = ['aadharFront', 'aadharBack', 'panCard', 'selfie'];
+        fileFields.forEach(field => {
+            if (req.files && req.files[field]) {
+                if (existingKyc && existingKyc[field]) {
+                    deleteFile(existingKyc[field]);
+                }
+                kycData[field] = `uploads/${req.files[field][0].filename}`;
             }
-            kycData.document = `uploads/${req.files['document'][0].filename}`;
-        }
+        });
 
         if (existingKyc) {
             existingKyc = await KYC.findOneAndUpdate({ user: userId }, kycData, { new: true, runValidators: true });

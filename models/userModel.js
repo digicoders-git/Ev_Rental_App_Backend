@@ -71,7 +71,7 @@ const userSchema = new mongoose.Schema({
     },
     city: {
         type: String,
-        default: "Bangalore"
+        default: ""
     },
     fcm_token: {
         type: String,

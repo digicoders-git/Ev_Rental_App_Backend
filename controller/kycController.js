@@ -17,7 +17,10 @@ const deleteFile = (filePath) => {
 // @access  Private (User with valid token)
 exports.submitKYC = async (req, res) => {
     try {
-        const userId = req.user.id;
+        let userId = req.user.id;
+        if ((req.user.role === 'admin' || req.user.role === 'franchise') && req.body.userId) {
+            userId = req.body.userId;
+        }
         const user = await User.findById(userId);
 
         if (!user) {

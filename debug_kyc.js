@@ -8,10 +8,8 @@ async function debugBookings() {
         await mongoose.connect('mongodb+srv://digicodersdevelopment_db_user:KoJGvdKsGU9IQQvk@cluster0.9ssqshr.mongodb.net/EV_RentalApp?retryWrites=true&w=majority');
         
         const allKyc = await KYC.find().populate('user');
-        console.log('--- ALL KYC RECORDS ---');
         for (const k of allKyc) {
-            console.log(`User: ${k.user?.name} (Mobile: ${k.user?.mobile}, ID: ${k.user?._id})`);
-            console.log(`Status: ${k.status}`);
+            console.log(JSON.stringify(k, null, 2));
             console.log('-------------------------');
         }
 

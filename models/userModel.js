@@ -94,13 +94,33 @@ const userSchema = new mongoose.Schema({
             type: Date,
             default: Date.now
         }
-    }]
+    }],
+    driver_id: {
+        type: String,
+        unique: true,
+        sparse: true
+    },
+    profile_edited: {
+        type: Boolean,
+        default: false
+    },
+    referred_by: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
+    }
 }, {
     timestamps: true
 });
 
-// Hash password before saving
+// Generate driver_id before saving
 userSchema.pre('save', async function () {
+    if (!this.driver_id) {
+        // Generate a 6-digit random string for DRV-XXXXXX format
+        const rand = Math.floor(100000 + Math.random() * 900000);
+        this.driver_id = `DRV-${rand}`;
+    }
+    
     if (!this.isModified('password')) {
         return;
     }

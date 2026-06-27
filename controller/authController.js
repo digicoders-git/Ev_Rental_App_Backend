@@ -12,7 +12,7 @@ const generateToken = (id) => {
 // @route   POST /api/auth/send-otp
 // @access  Public
 exports.sendOTP = async (req, res) => {
-    const { mobile, name } = req.body;
+    const { mobile, name, referralCode } = req.body;
 
     if (!mobile) {
         return res.status(400).json({ success: false, message: 'Please provide mobile number' });
@@ -28,7 +28,15 @@ exports.sendOTP = async (req, res) => {
 
         let user = await User.findOne({ mobile });
         if (!user) {
-            user = await User.create({ mobile, name: name || "" });
+            let referredBy = null;
+            if (referralCode) {
+                const parentUser = await User.findOne({ driver_id: referralCode });
+                if (!parentUser) {
+                    return res.status(400).json({ success: false, message: 'Invalid Referral Code' });
+                }
+                referredBy = parentUser._id;
+            }
+            user = await User.create({ mobile, name: name || "", referred_by: referredBy });
         } else if (name) {
             user.name = name;
         }
@@ -98,7 +106,7 @@ exports.verifyOTP = async (req, res) => {
 // @route   POST /api/auth/login
 // @access  Public
 exports.directLogin = async (req, res) => {
-    const { mobile, name, fcm_token } = req.body;
+    const { mobile, name, fcm_token, referralCode } = req.body;
 
     if (!mobile) {
         return res.status(400).json({ success: false, message: 'Please provide mobile number' });
@@ -111,7 +119,15 @@ exports.directLogin = async (req, res) => {
     try {
         let user = await User.findOne({ mobile });
         if (!user) {
-            user = await User.create({ mobile, name: name || "", isVerified: true });
+            let referredBy = null;
+            if (referralCode) {
+                const parentUser = await User.findOne({ driver_id: referralCode });
+                if (!parentUser) {
+                    return res.status(400).json({ success: false, message: 'Invalid Referral Code' });
+                }
+                referredBy = parentUser._id;
+            }
+            user = await User.create({ mobile, name: name || "", isVerified: true, referred_by: referredBy });
         } else {
             if (name) user.name = name;
             user.isVerified = true;

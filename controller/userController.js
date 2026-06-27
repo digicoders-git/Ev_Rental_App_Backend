@@ -62,6 +62,10 @@ exports.updateProfile = async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
+        if (user.profile_edited) {
+            return res.status(403).json({ success: false, message: 'Profile can only be edited once. Please contact admin to change details.' });
+        }
+
         if (name) user.name = name;
         if (email) user.email = email;
         if (mobile) user.mobile = mobile;
@@ -71,6 +75,8 @@ exports.updateProfile = async (req, res) => {
         if (req.file) {
             user.profile_picture = `/uploads/${req.file.filename}`;
         }
+
+        user.profile_edited = true;
 
         const updatedUser = await user.save();
 
@@ -223,7 +229,7 @@ exports.addRider = async (req, res) => {
 exports.getAllUsers = async (req, res) => {
     try {
         // Explicitly filter for users with role 'user' and exclude any 'admin' accounts
-        const users = await User.find({ role: 'user' }).sort({ createdAt: -1 });
+        const users = await User.find({ role: 'user' }).populate('referred_by', 'name driver_id mobile').sort({ createdAt: -1 });
         
         res.status(200).json({
             success: true,
@@ -240,7 +246,7 @@ exports.getAllUsers = async (req, res) => {
 // @access  Private/Admin
 exports.getUserDetail = async (req, res) => {
     try {
-        const user = await User.findById(req.params.id);
+        const user = await User.findById(req.params.id).populate('referred_by', 'name driver_id mobile');
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
@@ -267,7 +273,7 @@ exports.getUserDetail = async (req, res) => {
 // @access  Private/Admin
 exports.updateUserStatus = async (req, res) => {
     try {
-        const { status, role, credit_score, block_reason } = req.body;
+        const { status, role, credit_score, block_reason, name, email, mobile, profile_edited } = req.body;
         
         const user = await User.findById(req.params.id);
         if (!user) {
@@ -282,6 +288,10 @@ exports.updateUserStatus = async (req, res) => {
         if (status) user.status = status;
         if (role) user.role = role;
         if (credit_score !== undefined) user.credit_score = credit_score;
+        if (name !== undefined) user.name = name;
+        if (email !== undefined) user.email = email;
+        if (mobile !== undefined) user.mobile = mobile;
+        if (profile_edited !== undefined) user.profile_edited = profile_edited;
 
         // Handle Block Reason
         if (status === 'blocked') {

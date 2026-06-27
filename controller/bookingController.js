@@ -23,6 +23,23 @@ exports.createBooking = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Vehicle not found or not active' });
         }
 
+        // 1a. Check KYC Status
+        let bookingUserId = req.user ? req.user.id : null;
+        if (req.franchise || (req.user && req.user.role === 'admin')) {
+            if (req.body.user) bookingUserId = req.body.user;
+        }
+
+        if (bookingUserId) {
+            const KYC = require('../models/kycModel');
+            const kyc = await KYC.findOne({ user: bookingUserId });
+            if (!kyc || kyc.status !== 'approved') {
+                return res.status(403).json({ 
+                    success: false, 
+                    message: 'Booking not allowed. Your KYC documents must be approved by the admin first.' 
+                });
+            }
+        }
+
         // 1b. Check for Overlapping Bookings
         const overlap = await Booking.findOne({
             vehicle,
@@ -53,9 +70,13 @@ exports.createBooking = async (req, res) => {
         const total_amount = req.body.total_amount !== undefined ? req.body.total_amount : planData.price;
         const security_deposit = req.body.security_deposit !== undefined ? req.body.security_deposit : planData.security_deposit;
         const discount_amount = req.body.discount_amount || 0;
-        const grand_total = total_amount + security_deposit - discount_amount;
+        
+        // Calculate 5% GST on base rent (total_amount)
+        const gst_amount = req.body.gst_amount !== undefined ? req.body.gst_amount : Math.round(total_amount * 0.05);
+        
+        const grand_total = total_amount + gst_amount + security_deposit - discount_amount;
 
-        let bookingUserId = req.user ? req.user.id : null;
+        bookingUserId = req.user ? req.user.id : null;
         let creatorName = req.user ? (req.user.name || 'User') : 'Franchise/Admin';
 
         if (req.franchise || (req.user && req.user.role === 'admin')) {
@@ -78,6 +99,7 @@ exports.createBooking = async (req, res) => {
             start_date,
             end_date,
             total_amount,
+            gst_amount,
             discount_amount,
             security_deposit,
             grand_total,
@@ -663,7 +685,7 @@ exports.downloadReceipt = async (req, res) => {
         res.setHeader('Content-type', 'application/pdf');
         doc.pipe(res);
 
-        // --- PDF CONTENT DESIGN (EcoRide) ---
+        // --- PDF CONTENT DESIGN (TRIS Electric) ---
 
         const pageWidth = doc.page.width;
         const pageHeight = doc.page.height;
@@ -735,6 +757,11 @@ exports.downloadReceipt = async (req, res) => {
         const baseAmount = booking.total_amount || 0;
         drawRow(`EV Rental - ${planName}`, 1, baseAmount, baseAmount);
 
+        const gstAmount = booking.gst_amount || 0;
+        if (gstAmount > 0) {
+            drawRow('GST (5%)', 1, gstAmount, gstAmount);
+        }
+
         if (booking.security_deposit > 0) {
             drawRow('Security Deposit', 1, booking.security_deposit, booking.security_deposit);
         }
@@ -766,9 +793,9 @@ exports.downloadReceipt = async (req, res) => {
         
         currentY += 20;
         doc.font('Helvetica-Bold').fillColor('#333333').text('Note: ', 50, currentY, { continued: true })
-           .font('Helvetica').fillColor('#666666').text('Thank you for choosing EcoRide!');
+           .font('Helvetica').fillColor('#666666').text('Thank you for choosing TRIS Electric!');
 
-        // 9. EcoRide Branding Footer
+        // 9. TRIS Electric Branding Footer
         const footerY = pageHeight - 80;
         
         // Try to load logo
@@ -781,11 +808,11 @@ exports.downloadReceipt = async (req, res) => {
             // Ignore if logo not found
         }
 
-        doc.fontSize(12).font('Helvetica-Bold').fillColor('#333333').text('ECORIDE', 100, footerY);
-        doc.fontSize(9).font('Helvetica').fillColor('#666666').text('EV RENTALS', 100, footerY + 15);
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#333333').text('TRIS Electric', 100, footerY);
+        doc.fontSize(9).font('Helvetica').fillColor('#666666').text('EV RENTALS', 100, footerY + 12);
+        doc.text('GSTIN: 09DTTPS1540G1Z7', 100, footerY + 24);
 
-        doc.text('+91 70078 33947', 300, footerY);
-        doc.text('support@ecoride.com', 300, footerY + 15);
+        doc.text('support@tristechnology.com', 300, footerY);
 
         doc.text('123 Green Avenue', 450, footerY);
         doc.text('Eco City, EC 12345', 450, footerY + 15);
@@ -1233,3 +1260,4 @@ exports.payInstallmentWithWallet = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+

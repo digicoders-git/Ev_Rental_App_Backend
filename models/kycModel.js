@@ -41,6 +41,22 @@ const kycSchema = new mongoose.Schema({
     rejectionReason: {
         type: String,
         default: ''
+    },
+    registration_fee_paid: {
+        type: Boolean,
+        default: false
+    },
+    registration_fee_amount: {
+        type: Number,
+        default: 0
+    },
+    razorpay_payment_id: {
+        type: String,
+        default: ''
+    },
+    razorpay_order_id: {
+        type: String,
+        default: ''
     }
 }, {
     timestamps: true

@@ -4,6 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const { sendNotification } = require('../utils/notificationHelper');
 const { sendPushNotification } = require('../utils/fcmHelper');
+const crypto = require('crypto');
+const Razorpay = require('razorpay');
 
 const deleteFile = (filePath) => {
     if (filePath) {
@@ -49,12 +51,38 @@ exports.submitKYC = async (req, res) => {
             return res.status(400).json({ success: false, message: 'All 4 KYC document files (Aadhar Front, Aadhar Back, PAN Card, Selfie) are required.' });
         }
 
+        // Verify Razorpay payment
+        const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
+        
+        if (!existingKyc || !existingKyc.registration_fee_paid) {
+            if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
+                return res.status(400).json({ success: false, message: 'Registration fee payment details are required.' });
+            }
+
+            const body = razorpay_order_id + "|" + razorpay_payment_id;
+            const expectedSignature = crypto
+                .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+                .update(body.toString())
+                .digest("hex");
+
+            if (expectedSignature !== razorpay_signature) {
+                return res.status(400).json({ success: false, message: 'Invalid payment signature. Registration fee verification failed.' });
+            }
+        }
+
         const kycData = { 
             user: userId, 
             name, 
             mobileNumber, 
             status: 'pending' 
         };
+
+        if (!existingKyc || !existingKyc.registration_fee_paid) {
+            kycData.registration_fee_paid = true;
+            kycData.registration_fee_amount = 49;
+            kycData.razorpay_payment_id = req.body.razorpay_payment_id;
+            kycData.razorpay_order_id = req.body.razorpay_order_id;
+        }
 
         const fileFields = ['aadharFront', 'aadharBack', 'panCard', 'selfie'];
         fileFields.forEach(field => {
@@ -207,6 +235,36 @@ exports.getKYCByMobile = async (req, res) => {
         }
 
         res.status(200).json({ success: true, data: kyc });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Create Razorpay Order for KYC Registration Fee (INR 49)
+// @route   POST /api/kyc/create-fee-order
+// @access  Private
+exports.createFeeOrder = async (req, res) => {
+    try {
+        const razorpay = new Razorpay({
+            key_id: process.env.RAZORPAY_KEY_ID,
+            key_secret: process.env.RAZORPAY_KEY_SECRET
+        });
+
+        const amountInPaise = 49 * 100; // INR 49
+        const options = {
+            amount: amountInPaise,
+            currency: 'INR',
+            receipt: `kyc_fee_${req.user.id}`
+        };
+
+        const order = await razorpay.orders.create(options);
+
+        res.status(201).json({
+            success: true,
+            razorpay_order_id: order.id,
+            razorpay_key: process.env.RAZORPAY_KEY_ID,
+            amount_in_paise: amountInPaise
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

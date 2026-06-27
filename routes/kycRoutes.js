@@ -5,7 +5,8 @@ const {
     getMyKYCStatus,
     getAllKYCSubmissions,
     updateKYCStatus,
-    getKYCByMobile
+    getKYCByMobile,
+    createFeeOrder
 } = require('../controller/kycController');
 const { protect, admin, franchiseProtect, anyProtect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -19,6 +20,7 @@ const kycUploadFields = upload.fields([
 
 // User routes
 router.post('/submit', protect, kycUploadFields, submitKYC);
+router.post('/create-fee-order', protect, createFeeOrder);
 router.get('/my-status', protect, getMyKYCStatus);
 
 // Admin routes

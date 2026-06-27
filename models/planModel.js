@@ -8,7 +8,7 @@ const rentalPlanSchema = new mongoose.Schema({
     },
     pricing_type: {
         type: String,
-        enum: ['daily', 'weekly', 'monthly', 'custom'],
+        enum: ['hourly', 'daily', 'weekly', 'monthly', 'custom'],
         required: true
     },
     price: {

@@ -38,6 +38,10 @@ const bookingSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
+    gst_amount: {
+        type: Number,
+        default: 0
+    },
     discount_amount: {
         type: Number,
         default: 0

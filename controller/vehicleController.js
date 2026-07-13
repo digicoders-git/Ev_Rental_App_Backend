@@ -58,7 +58,11 @@ exports.getAllVehicles = async (req, res) => {
         let query = {};
         
         if (franchiseId) {
-            query.franchise = franchiseId;
+            if (franchiseId === 'main') {
+                query.franchise = null;
+            } else {
+                query.franchise = franchiseId;
+            }
         }
         if (category) {
             query.category = category;

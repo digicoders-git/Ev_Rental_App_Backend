@@ -545,3 +545,22 @@ exports.getFranchiseHistory = async (req, res) => {
     }
 };
 
+
+// @desc    Get Public Franchise Stores (Hubs)
+// @route   GET /api/franchise-enquiry/public/stores
+// @access  Public
+exports.getPublicFranchiseStores = async (req, res) => {
+    try {
+        const stores = await FranchiseStore.find({ status: 'active' })
+            .select('store_id store_name address city state mobile email profile_image')
+            .sort('-createdAt');
+        res.status(200).json({
+            success: true,
+            count: stores.length,
+            data: stores
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+

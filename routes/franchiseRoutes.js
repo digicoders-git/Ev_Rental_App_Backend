@@ -16,7 +16,8 @@ const {
     changeFranchisePassword,
     getFranchiseRevenue,
     getAdminRevenueByFranchise,
-    getFranchiseHistory
+    getFranchiseHistory,
+    getPublicFranchiseStores
 } = require('../controller/franchiseController');
 const { protect, admin, franchiseProtect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -29,6 +30,7 @@ const franchiseUploadFields = upload.fields([
     { name: 'selfie', maxCount: 1 }
 ]);
 router.post('/', franchiseUploadFields, submitEnquiry);
+router.get('/public/stores', getPublicFranchiseStores);
 
 // Franchise Owner Routes
 router.post('/login', franchiseLogin);

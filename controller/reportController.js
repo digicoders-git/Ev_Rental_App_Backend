@@ -101,6 +101,65 @@ exports.getDashboardStats = async (req, res) => {
             },
             franchise: {
                 total_stores: await FranchiseStore.countDocuments(),
+                riderStats: await Booking.aggregate([
+                    { $match: { franchise: { $ne: null } } },
+                    {
+                        $group: {
+                            _id: { franchise: '$franchise', user: '$user' },
+                            statuses: { $addToSet: '$booking_status' }
+                        }
+                    },
+                    {
+                        $project: {
+                            franchise: '$_id.franchise',
+                            user: '$_id.user',
+                            isActive: {
+                                $cond: [
+                                    { $gt: [{ $size: { $setIntersection: [['ongoing', 'confirmed'], '$statuses'] } }, 0] },
+                                    true,
+                                    false
+                                ]
+                            },
+                            isOffboarded: {
+                                $cond: [
+                                    {
+                                        $and: [
+                                            { $in: ['completed', '$statuses'] },
+                                            { $eq: [{ $size: { $setIntersection: [['ongoing', 'confirmed'], '$statuses'] } }, 0] }
+                                        ]
+                                    },
+                                    true,
+                                    false
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        $group: {
+                            _id: '$franchise',
+                            activeRiders: { $sum: { $cond: ['$isActive', 1, 0] } },
+                            offboardedRiders: { $sum: { $cond: ['$isOffboarded', 1, 0] } }
+                        }
+                    },
+                    {
+                        $lookup: {
+                            from: 'franchisestores',
+                            localField: '_id',
+                            foreignField: '_id',
+                            as: 'franchise_details'
+                        }
+                    },
+                    { $unwind: '$franchise_details' },
+                    {
+                        $project: {
+                            store_name: '$franchise_details.store_name',
+                            activeRiders: 1,
+                            offboardedRiders: 1,
+                            totalRiders: { $add: [{ $cond: [{ $gt: ['$activeRiders', null] }, '$activeRiders', 0] }, { $cond: [{ $gt: ['$offboardedRiders', null] }, '$offboardedRiders', 0] }] }
+                        }
+                    },
+                    { $sort: { activeRiders: -1, totalRiders: -1 } }
+                ])
             },
             documents: {
                 total: await Document.countDocuments(),

@@ -1261,3 +1261,53 @@ exports.payInstallmentWithWallet = async (req, res) => {
     }
 };
 
+// @desc    Change Assigned Vehicle for a Booking
+// @route   PUT /api/bookings/:id/change-vehicle
+// @access  Private/Admin/Franchise
+exports.changeAssignedVehicle = async (req, res) => {
+    try {
+        const { newVehicleId } = req.body;
+        const booking = await Booking.findById(req.params.id).populate('vehicle');
+
+        if (!booking) {
+            return res.status(404).json({ success: false, message: 'Booking not found' });
+        }
+
+        if (['completed', 'cancelled'].includes(booking.booking_status)) {
+            return res.status(400).json({ success: false, message: 'Cannot change vehicle for completed or cancelled bookings.' });
+        }
+
+        // Verify new vehicle exists and is active
+        const newVehicle = await Vehicle.findById(newVehicleId);
+        if (!newVehicle || newVehicle.status !== 'active') {
+            return res.status(400).json({ success: false, message: 'Selected vehicle is not available or inactive.' });
+        }
+
+        // Check overlapping for new vehicle
+        const overlap = await Booking.findOne({
+            _id: { $ne: booking._id },
+            vehicle: newVehicleId,
+            booking_status: { $in: ['confirmed', 'ongoing'] },
+            $or: [
+                { start_date: { $lte: booking.end_date }, end_date: { $gte: booking.start_date } }
+            ]
+        });
+
+        if (overlap) {
+            return res.status(400).json({ success: false, message: 'Selected vehicle is already booked for these dates.' });
+        }
+
+        // Change the vehicle
+        booking.vehicle = newVehicleId;
+        await booking.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Vehicle successfully changed/swapped.',
+            data: booking
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+

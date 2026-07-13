@@ -1,4 +1,7 @@
 const GlobalSetting = require('../models/globalSettingModel');
+const Booking = require('../models/bookingModel');
+const Tracking = require('../models/trackingModel');
+const KYC = require('../models/kycModel');
 
 // @desc    Get all global settings
 // @route   GET /api/settings
@@ -34,6 +37,50 @@ exports.updateSettings = async (req, res) => {
         await Promise.all(promises);
 
         res.status(200).json({ success: true, message: 'Settings updated successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Delete old records (Bookings & Tracking)
+// @route   DELETE /api/settings/cleanup
+// @access  Private/Admin
+exports.cleanupOldRecords = async (req, res) => {
+    try {
+        const { months } = req.query;
+        if (!months || isNaN(months)) {
+            return res.status(400).json({ success: false, message: 'Please provide a valid number of months' });
+        }
+
+        const cutoffDate = new Date();
+        cutoffDate.setMonth(cutoffDate.getMonth() - parseInt(months));
+
+        // Delete Tracking logs older than cutoff
+        const trackingResult = await Tracking.deleteMany({
+            createdAt: { $lt: cutoffDate }
+        });
+
+        // Delete Bookings older than cutoff ONLY if completed or cancelled
+        const bookingResult = await Booking.deleteMany({
+            createdAt: { $lt: cutoffDate },
+            booking_status: { $in: ['completed', 'cancelled'] }
+        });
+
+        // Delete Approved KYCs older than cutoff
+        const kycResult = await KYC.deleteMany({
+            createdAt: { $lt: cutoffDate },
+            status: 'approved'
+        });
+
+        res.status(200).json({
+            success: true,
+            message: `Cleanup successful. Deleted ${trackingResult.deletedCount} tracking logs, ${bookingResult.deletedCount} bookings, and ${kycResult.deletedCount} approved KYC records.`,
+            data: {
+                trackingDeleted: trackingResult.deletedCount,
+                bookingsDeleted: bookingResult.deletedCount,
+                kycDeleted: kycResult.deletedCount
+            }
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

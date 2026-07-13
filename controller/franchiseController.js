@@ -301,11 +301,23 @@ exports.updateFranchiseStore = async (req, res) => {
 // @access  Private/Admin
 exports.deleteFranchiseStore = async (req, res) => {
     try {
-        const store = await FranchiseStore.findByIdAndDelete(req.params.id);
+        const storeId = req.params.id;
+        
+        const store = await FranchiseStore.findById(storeId);
         if (!store) {
             return res.status(404).json({ success: false, message: 'Store not found' });
         }
-        res.status(200).json({ success: true, message: 'Store deleted successfully' });
+
+        // Unassign vehicles from this franchise
+        await Vehicle.updateMany(
+            { franchise: storeId },
+            { $unset: { franchise: 1 } }
+        );
+
+        // Delete the store
+        await FranchiseStore.findByIdAndDelete(storeId);
+
+        res.status(200).json({ success: true, message: 'Store deleted and related vehicles unassigned successfully.' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

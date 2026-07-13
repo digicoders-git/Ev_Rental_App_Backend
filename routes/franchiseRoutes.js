@@ -21,8 +21,14 @@ const {
 const { protect, admin, franchiseProtect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
 
-// Public route: Submit enquiry
-router.post('/', submitEnquiry);
+// Public route: Submit enquiry (with optional KYC doc upload)
+const franchiseUploadFields = upload.fields([
+    { name: 'aadharFront', maxCount: 1 },
+    { name: 'aadharBack', maxCount: 1 },
+    { name: 'panCard', maxCount: 1 },
+    { name: 'selfie', maxCount: 1 }
+]);
+router.post('/', franchiseUploadFields, submitEnquiry);
 
 // Franchise Owner Routes
 router.post('/login', franchiseLogin);

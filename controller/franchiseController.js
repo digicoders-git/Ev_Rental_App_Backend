@@ -3,6 +3,7 @@ const FranchiseStore = require('../models/franchiseStoreModel');
 const Vehicle = require('../models/vehicleModel');
 const Booking = require('../models/bookingModel');
 const jwt = require('jsonwebtoken');
+const cloudinary = require('cloudinary').v2;
 const mongoose = require('mongoose');
 
 // Generate JWT for Franchise
@@ -138,9 +139,49 @@ exports.changeFranchisePassword = async (req, res) => {
 // @desc    Submit Franchise Enquiry
 // @route   POST /api/franchise-enquiry
 // @access  Public
+// @desc    Submit Franchise Enquiry (with KYC doc + ₹50 registration fee)
+// @route   POST /api/franchise-enquiry
+// @access  Public
 exports.submitEnquiry = async (req, res) => {
     try {
-        const enquiry = await FranchiseEnquiry.create(req.body);
+        const {
+            full_name, phone_number, email, city, state,
+            investment_budget, message, registration_fee_txn_id
+        } = req.body;
+
+        // Build enquiry data
+        const enquiryData = {
+            full_name, phone_number, email,
+            city, state, investment_budget, message,
+        };
+
+        // If registration fee txn_id provided, mark as paid
+        if (registration_fee_txn_id) {
+            enquiryData.registration_fee_paid = true;
+            enquiryData.registration_fee_txn_id = registration_fee_txn_id;
+        }
+
+        // Upload KYC documents if provided
+        if (req.files) {
+            if (req.files['aadharFront']) {
+                const res = await cloudinary.uploader.upload(req.files['aadharFront'][0].path, { folder: 'franchise_kyc', resource_type: 'auto' });
+                enquiryData.aadharFront = res.secure_url;
+            }
+            if (req.files['aadharBack']) {
+                const res = await cloudinary.uploader.upload(req.files['aadharBack'][0].path, { folder: 'franchise_kyc', resource_type: 'auto' });
+                enquiryData.aadharBack = res.secure_url;
+            }
+            if (req.files['panCard']) {
+                const res = await cloudinary.uploader.upload(req.files['panCard'][0].path, { folder: 'franchise_kyc', resource_type: 'auto' });
+                enquiryData.panCard = res.secure_url;
+            }
+            if (req.files['selfie']) {
+                const res = await cloudinary.uploader.upload(req.files['selfie'][0].path, { folder: 'franchise_kyc', resource_type: 'auto' });
+                enquiryData.selfie = res.secure_url;
+            }
+        }
+
+        const enquiry = await FranchiseEnquiry.create(enquiryData);
         res.status(201).json({ success: true, message: 'Enquiry submitted successfully', data: enquiry });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });

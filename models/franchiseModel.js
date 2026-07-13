@@ -42,6 +42,34 @@ const franchiseEnquirySchema = new mongoose.Schema({
     },
     follow_up_date: {
         type: Date,
+    },
+    aadharFront: {
+        type: String,
+        default: null,
+    },
+    aadharBack: {
+        type: String,
+        default: null,
+    },
+    panCard: {
+        type: String,
+        default: null,
+    },
+    selfie: {
+        type: String,
+        default: null,
+    },
+    registration_fee_paid: {
+        type: Boolean,
+        default: false,
+    },
+    registration_fee_amount: {
+        type: Number,
+        default: 50,
+    },
+    registration_fee_txn_id: {
+        type: String,
+        default: null,
     }
 }, {
     timestamps: true

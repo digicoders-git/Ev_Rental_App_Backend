@@ -13,7 +13,7 @@ const bookingSchema = new mongoose.Schema({
     vehicle: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Vehicle',
-        required: true
+        default: null
     },
     // Stamped at booking creation to isolate franchise data correctly
     franchise: {

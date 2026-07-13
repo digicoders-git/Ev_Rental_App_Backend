@@ -23,7 +23,8 @@ const {
     payBookingWithWallet,
     payInstallmentWithWallet,
     verifyPayment,
-    changeAssignedVehicle
+    changeAssignedVehicle,
+    unassignVehicle
 } = require('../controller/bookingController');
 const { protect, admin, franchiseProtect, anyProtect } = require('../middleware/authMiddleware');
 
@@ -55,6 +56,7 @@ router.patch('/:id/approve', anyProtect, approveBooking);
 router.patch('/:id/reject', anyProtect, rejectBooking);
 router.patch('/:id/status', anyProtect, updateBookingStatus);
 router.put('/:id/change-vehicle', anyProtect, changeAssignedVehicle);
+router.put('/:id/unassign', anyProtect, unassignVehicle);
 
 // Installment Routes
 router.post('/:id/installments/setup', anyProtect, setupInstallments);

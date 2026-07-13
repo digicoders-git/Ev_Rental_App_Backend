@@ -1311,3 +1311,36 @@ exports.changeAssignedVehicle = async (req, res) => {
     }
 };
 
+// @desc    Unassign Vehicle from a Booking
+// @route   PUT /api/bookings/:id/unassign
+// @access  Private/Admin/Franchise
+exports.unassignVehicle = async (req, res) => {
+    try {
+        const booking = await Booking.findById(req.params.id);
+
+        if (!booking) {
+            return res.status(404).json({ success: false, message: 'Booking not found' });
+        }
+
+        if (['completed', 'cancelled'].includes(booking.booking_status)) {
+            return res.status(400).json({ success: false, message: 'Cannot unassign vehicle for completed or cancelled bookings.' });
+        }
+
+        // Remove the vehicle assignment and revert status to pending if it was confirmed
+        booking.vehicle = null;
+        if (booking.booking_status === 'confirmed' || booking.booking_status === 'ongoing') {
+            booking.booking_status = 'pending';
+        }
+        
+        await booking.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Vehicle successfully unassigned from this booking.',
+            data: booking
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+

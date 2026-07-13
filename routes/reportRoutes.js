@@ -5,7 +5,8 @@ const {
     getRevenueAnalysis,
     getFranchisePerformance,
     exportBookingsCSV,
-    getRevenueReport
+    getRevenueReport,
+    getInstallmentHealth
 } = require('../controller/reportController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
@@ -17,5 +18,6 @@ router.get('/revenue-analysis', getRevenueAnalysis);
 router.get('/revenue-report', getRevenueReport);
 router.get('/franchise-performance', getFranchisePerformance);
 router.get('/export/bookings', exportBookingsCSV);
+router.get('/installment-health', getInstallmentHealth);
 
 module.exports = router;

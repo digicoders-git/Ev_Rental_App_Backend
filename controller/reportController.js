@@ -486,3 +486,84 @@ exports.getRevenueReport = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// @desc    Get Installment Payment Health (for Dashboard Tracker)
+// @route   GET /api/reports/installment-health
+// @access  Private/Admin
+exports.getInstallmentHealth = async (req, res) => {
+    try {
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(now);
+        todayEnd.setHours(23, 59, 59, 999);
+        const upcoming3Days = new Date(now);
+        upcoming3Days.setDate(upcoming3Days.getDate() + 3);
+
+        // Fetch all ongoing bookings that have installments set up
+        const bookings = await Booking.find({
+            booking_status: { $in: ['ongoing', 'confirmed'] },
+            'payment_installments.0': { $exists: true }
+        })
+        .populate('user', 'name mobile')
+        .populate('franchise', 'store_name')
+        .populate('vehicle', 'vehicle_name registration_number')
+        .lean();
+
+        const overdue = [];
+        const dueToday = [];
+        const upcoming = [];
+
+        bookings.forEach(booking => {
+            const installments = booking.payment_installments || [];
+            const pendingInsts = installments.filter(i => i.status !== 'paid');
+            if (pendingInsts.length === 0) return;
+
+            pendingInsts.forEach(inst => {
+                const dueDate = new Date(inst.due_date);
+                dueDate.setHours(0, 0, 0, 0);
+
+                const entry = {
+                    booking_id: booking.booking_id,
+                    booking_db_id: booking._id,
+                    installment_id: inst._id,
+                    installment_no: inst.installment_no,
+                    rider_name: booking.user?.name || 'Unknown',
+                    rider_mobile: booking.user?.mobile || '',
+                    franchise: booking.franchise?.store_name || 'Platform',
+                    vehicle: booking.vehicle?.vehicle_name || '—',
+                    amount: inst.amount,
+                    due_date: inst.due_date,
+                    total_installments: installments.length,
+                    paid_count: installments.filter(i => i.status === 'paid').length
+                };
+
+                if (dueDate < now) {
+                    overdue.push({ ...entry, health: 'overdue' });
+                } else if (dueDate >= now && dueDate <= todayEnd) {
+                    dueToday.push({ ...entry, health: 'due_today' });
+                } else if (dueDate > todayEnd && dueDate <= upcoming3Days) {
+                    upcoming.push({ ...entry, health: 'upcoming' });
+                }
+            });
+        });
+
+        overdue.sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+        upcoming.sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+
+        res.status(200).json({
+            success: true,
+            data: {
+                overdue,
+                due_today: dueToday,
+                upcoming,
+                summary: {
+                    overdue_count: overdue.length,
+                    due_today_count: dueToday.length,
+                    upcoming_count: upcoming.length
+                }
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

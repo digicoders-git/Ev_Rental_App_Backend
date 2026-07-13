@@ -103,6 +103,8 @@ app.use('/api/settings', require('./routes/settingRoutes'));
 app.use('/api/wallet', require('./routes/walletRoutes'));
 app.use('/api/recharge-plans', require('./routes/rechargePlanRoutes'));
 app.use('/api/damage-reports', require('./routes/damageReportRoutes'));
+app.use('/api/invoices', require('./routes/invoiceRoutes'));
+app.use('/api/settlements', require('./routes/settlementRoutes'));
 app.use('/api', require('./routes/testRoutes'));
 
 

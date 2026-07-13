@@ -53,6 +53,28 @@ const franchiseStoreSchema = new mongoose.Schema({
         type: String,
         enum: ['active', 'inactive', 'suspended'],
         default: 'active'
+    },
+    // Payment Configuration
+    payment_model: {
+        type: String,
+        enum: ['platform', 'split', 'direct'],
+        default: 'platform'
+    },
+    franchise_share_percentage: {
+        type: Number,
+        default: 80
+    },
+    razorpay_linked_account_id: {
+        type: String,
+        default: ""
+    },
+    razorpay_key_id: {
+        type: String,
+        default: ""
+    },
+    razorpay_key_secret: {
+        type: String,
+        default: ""
     }
 }, {
     timestamps: true

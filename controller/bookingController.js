@@ -119,25 +119,62 @@ exports.createBooking = async (req, res) => {
         let razorpayOrderData = null;
 
         if (payment_method === 'online') {
+            let rzpKeyId = process.env.RAZORPAY_KEY_ID;
+            let rzpKeySecret = process.env.RAZORPAY_KEY_SECRET;
+            let paymentGatewayUsed = 'platform';
+            let rzpOptionsExtras = {};
+
+            if (vehicleData.franchise) {
+                const FranchiseStore = require('../models/franchiseStoreModel');
+                const franchiseData = await FranchiseStore.findById(vehicleData.franchise);
+
+                if (franchiseData) {
+                    if (franchiseData.payment_model === 'direct' && franchiseData.razorpay_key_id && franchiseData.razorpay_key_secret) {
+                        rzpKeyId = franchiseData.razorpay_key_id;
+                        rzpKeySecret = franchiseData.razorpay_key_secret;
+                        paymentGatewayUsed = 'direct';
+                    } else if (franchiseData.payment_model === 'split' && franchiseData.razorpay_linked_account_id) {
+                        const amountInPaise = Math.round(grand_total * 100);
+                        const franchiseShare = Math.round(amountInPaise * ((franchiseData.franchise_share_percentage || 80) / 100));
+                        rzpOptionsExtras = {
+                            transfers: [
+                                {
+                                    account: franchiseData.razorpay_linked_account_id,
+                                    amount: franchiseShare,
+                                    currency: 'INR',
+                                    notes: {
+                                        booking_id: booking._id.toString()
+                                    },
+                                    linked_account_notes: ["booking_id"]
+                                }
+                            ]
+                        };
+                    }
+                }
+            }
+
             const razorpay = new Razorpay({
-                key_id: process.env.RAZORPAY_KEY_ID,
-                key_secret: process.env.RAZORPAY_KEY_SECRET
+                key_id: rzpKeyId,
+                key_secret: rzpKeySecret
             });
 
             const amountInPaise = Math.round(grand_total * 100);
             const options = {
                 amount: amountInPaise,
                 currency: 'INR',
-                receipt: booking._id.toString()
+                receipt: booking._id.toString(),
+                ...rzpOptionsExtras
             };
 
             const order = await razorpay.orders.create(options);
             booking.razorpay_order_id = order.id;
+            booking.payment_gateway_used = paymentGatewayUsed;
+            booking.razorpay_key_used = rzpKeyId;
             await booking.save();
 
             razorpayOrderData = {
                 razorpay_order_id: order.id,
-                razorpay_key: process.env.RAZORPAY_KEY_ID,
+                razorpay_key: rzpKeyId,
                 amount_in_paise: amountInPaise
             };
         }
@@ -159,19 +196,29 @@ exports.verifyPayment = async (req, res) => {
     try {
         const { booking_id, razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
 
+        const booking = await Booking.findById(booking_id).populate('vehicle');
+        if (!booking) {
+            return res.status(404).json({ success: false, message: 'Booking not found' });
+        }
+
+        let rzpKeySecret = process.env.RAZORPAY_KEY_SECRET;
+
+        if (booking.payment_gateway_used === 'direct' && booking.vehicle && booking.vehicle.franchise) {
+            const FranchiseStore = require('../models/franchiseStoreModel');
+            const franchiseData = await FranchiseStore.findById(booking.vehicle.franchise);
+            if (franchiseData && franchiseData.razorpay_key_secret) {
+                rzpKeySecret = franchiseData.razorpay_key_secret;
+            }
+        }
+
         const body = razorpay_order_id + "|" + razorpay_payment_id;
         const expectedSignature = crypto
-            .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+            .createHmac("sha256", rzpKeySecret)
             .update(body.toString())
             .digest("hex");
 
         if (expectedSignature !== razorpay_signature) {
             return res.status(400).json({ success: false, message: 'Invalid signature. Payment verification failed.' });
-        }
-
-        const booking = await Booking.findById(booking_id);
-        if (!booking) {
-            return res.status(404).json({ success: false, message: 'Booking not found' });
         }
 
         booking.payment_status = 'paid';

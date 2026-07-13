@@ -88,6 +88,15 @@ const bookingSchema = new mongoose.Schema({
     razorpay_payment_id: {
         type: String,
     },
+    payment_gateway_used: {
+        type: String,
+        enum: ['platform', 'direct'],
+        default: 'platform'
+    },
+    razorpay_key_used: {
+        type: String,
+        default: ""
+    },
     actual_return_date: {
         type: Date
     },

@@ -318,14 +318,17 @@ exports.getFranchiseStoreById = async (req, res) => {
 // @access  Private/Admin
 exports.updateFranchiseStore = async (req, res) => {
     try {
-        const store = await FranchiseStore.findByIdAndUpdate(req.params.id, req.body, {
-            new: true,
-            runValidators: true
-        });
-
+        const store = await FranchiseStore.findById(req.params.id);
         if (!store) {
             return res.status(404).json({ success: false, message: 'Store not found' });
         }
+
+        // Update fields
+        Object.keys(req.body).forEach(key => {
+            store[key] = req.body[key];
+        });
+
+        await store.save();
 
         res.status(200).json({
             success: true,

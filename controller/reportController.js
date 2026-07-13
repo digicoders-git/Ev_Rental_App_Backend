@@ -279,19 +279,46 @@ exports.getFranchisePerformance = async (req, res) => {
 // @access  Private/Admin
 exports.exportBookingsCSV = async (req, res) => {
     try {
-        const bookings = await Booking.find()
+        const { timeframe } = req.query;
+
+        // Build date filter based on timeframe
+        let dateFilter = {};
+        let periodLabel = 'AllTime';
+
+        if (timeframe === 'weekly') {
+            const start = new Date();
+            start.setDate(start.getDate() - 7);
+            dateFilter = { createdAt: { $gte: start } };
+            periodLabel = 'Weekly';
+        } else if (timeframe === 'monthly') {
+            const start = new Date();
+            start.setDate(start.getDate() - 30);
+            dateFilter = { createdAt: { $gte: start } };
+            periodLabel = 'Monthly';
+        } else if (timeframe === 'yearly') {
+            const start = new Date();
+            start.setDate(start.getDate() - 365);
+            dateFilter = { createdAt: { $gte: start } };
+            periodLabel = 'Yearly';
+        }
+
+        const bookings = await Booking.find(dateFilter)
             .populate('user', 'name mobile')
             .populate('vehicle', 'vehicle_name registration_number')
+            .populate('franchise', 'store_name')
             .sort('-createdAt');
 
-        let csv = 'BookingID,User,Mobile,Vehicle,RegNo,Start,End,Amount,Status\n';
+        let csv = 'BookingID,User,Mobile,Vehicle,RegNo,Franchise,Start,End,Amount,PaymentStatus,BookingStatus\n';
         
         bookings.forEach(b => {
-            csv += `${b.booking_id},${b.user?.name},${b.user?.mobile},${b.vehicle?.vehicle_name},${b.vehicle?.registration_number},${b.start_date.toISOString()},${b.end_date.toISOString()},${b.grand_total},${b.booking_status}\n`;
+            const startDate = b.start_date ? new Date(b.start_date).toLocaleDateString('en-IN') : 'N/A';
+            const endDate   = b.end_date   ? new Date(b.end_date).toLocaleDateString('en-IN')   : 'N/A';
+            csv += `${b.booking_id},${b.user?.name || ''},${b.user?.mobile || ''},${b.vehicle?.vehicle_name || ''},${b.vehicle?.registration_number || ''},${b.franchise?.store_name || 'Platform'},${startDate},${endDate},${b.grand_total},${b.payment_status},${b.booking_status}\n`;
         });
 
+        const filename = `bookings_${periodLabel}_${new Date().toISOString().slice(0, 10)}.csv`;
         res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', 'attachment; filename=bookings_report.csv');
+        res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
         res.status(200).send(csv);
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -306,7 +333,7 @@ exports.getRevenueReport = async (req, res) => {
         const { timeframe } = req.query; // 'weekly', 'monthly', 'yearly'
         
         // 1. Chart Data (Revenue vs Refunds)
-        let daysToLookBack = timeframe === 'monthly' ? 30 : timeframe === 'yearly' ? 365 : 7;
+        let daysToLookBack = timeframe === 'monthly' ? 30 : timeframe === 'yearly' ? 365 : timeframe === 'all' ? 36500 : 7;
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - daysToLookBack);
 
@@ -331,7 +358,7 @@ exports.getRevenueReport = async (req, res) => {
         const formattedChartData = chartStats.map(stat => ({
             period: timeframe === 'weekly' ? new Date(stat._id.year, stat._id.month - 1, stat._id.day).toLocaleDateString('en-US', { weekday: 'short' }) :
                     timeframe === 'monthly' ? `${stat._id.day}/${stat._id.month}` :
-                    new Date(stat._id.year, stat._id.month - 1, 1).toLocaleDateString('en-US', { month: 'short' }),
+                    new Date(stat._id.year, stat._id.month - 1, 1).toLocaleDateString('en-US', { month: 'short', year: timeframe === 'all' ? '2-digit' : undefined }),
             revenue: stat.revenue,
             refunds: stat.refunds,
             bookings: stat.bookings

@@ -105,6 +105,7 @@ app.use('/api/recharge-plans', require('./routes/rechargePlanRoutes'));
 app.use('/api/damage-reports', require('./routes/damageReportRoutes'));
 app.use('/api/invoices', require('./routes/invoiceRoutes'));
 app.use('/api/settlements', require('./routes/settlementRoutes'));
+app.use('/api/gig-companies', require('./routes/gigCompanyRoutes'));
 app.use('/api', require('./routes/testRoutes'));
 
 

@@ -108,6 +108,15 @@ const userSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         default: null
+    },
+    gigCompanyId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'GigCompany',
+        default: null
+    },
+    employeeId: {
+        type: String,
+        default: ""
     }
 }, {
     timestamps: true

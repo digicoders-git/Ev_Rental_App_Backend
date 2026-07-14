@@ -100,6 +100,14 @@ exports.submitKYC = async (req, res) => {
             existingKyc = await KYC.create(kycData);
         }
 
+        // Update User with Gig Company info
+        if (req.body.gigCompanyId || req.body.employeeId) {
+            await User.findByIdAndUpdate(userId, {
+                gigCompanyId: req.body.gigCompanyId || user.gigCompanyId,
+                employeeId: req.body.employeeId || user.employeeId
+            });
+        }
+
         await sendNotification({
             title: 'New KYC Submitted',
             message: `KYC submitted by user ${mobileNumber} for admin approval.`,

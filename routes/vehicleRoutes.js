@@ -9,9 +9,10 @@ const {
     assignVehicle,
     getMyFranchiseVehicles,
     checkAvailability,
-    createFranchiseVehicle
+    createFranchiseVehicle,
+    updateVehicleStatus
 } = require('../controller/vehicleController');
-const { protect, admin, franchiseProtect } = require('../middleware/authMiddleware');
+const { protect, admin, franchiseProtect, anyProtect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
 
 // Define file fields for upload
@@ -39,5 +40,8 @@ router.delete('/:id', protect, admin, deleteVehicle);
 
 // Assign vehicle to store
 router.put('/:id/assign', protect, admin, assignVehicle);
+
+// Update vehicle status (Admin or Franchise) — with active-booking conflict check & force override
+router.patch('/:id/status', anyProtect, updateVehicleStatus);
 
 module.exports = router;

@@ -228,11 +228,24 @@ exports.getMyFranchiseVehicles = async (req, res) => {
 
         // req.franchise is set by franchiseProtect middleware
         const vehicles = await Vehicle.find(query).sort('-createdAt').populate('category', 'name');
+
+        // Add is_busy flag based on active bookings
+        const Booking = require('../models/bookingModel');
+        const busyBookings = await Booking.find({
+            booking_status: { $in: ['confirmed', 'ongoing'] }
+        }).select('vehicle');
+        const busyVehicleIds = busyBookings.map(b => b.vehicle ? b.vehicle.toString() : '');
+
+        const data = vehicles.map(v => {
+            const vObj = v.toObject();
+            vObj.is_busy = busyVehicleIds.includes(v._id.toString());
+            return vObj;
+        });
         
         res.status(200).json({ 
             success: true, 
             count: vehicles.length, 
-            data: vehicles 
+            data: data
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -317,5 +330,89 @@ exports.createFranchiseVehicle = async (req, res) => {
         res.status(201).json({ success: true, data: vehicle });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Update Vehicle Status only (Admin/Franchise) — with active-booking safety check
+// @route   PATCH /api/vehicles/:id/status
+// @access  Private/Admin or Franchise
+exports.updateVehicleStatus = async (req, res) => {
+    try {
+        const { status, force } = req.body;
+
+        // Map frontend status labels to DB enum values
+        const statusMap = {
+            'available': 'active',
+            'active': 'active',
+            'maintenance': 'maintenance',
+            'inactive': 'inactive',
+            'out_of_order': 'out_of_order',
+            'out of order': 'out_of_order',
+        };
+
+        const dbStatus = statusMap[status?.toLowerCase()];
+        if (!dbStatus) {
+            return res.status(400).json({
+                success: false,
+                message: `Invalid status '${status}'. Allowed: available, maintenance, inactive, out_of_order`
+            });
+        }
+
+        const vehicle = await Vehicle.findById(req.params.id);
+        if (!vehicle) {
+            return res.status(404).json({ success: false, message: 'Vehicle not found' });
+        }
+
+        // Authorization — Admin or the franchise that owns this vehicle
+        const isAdmin = req.user && req.user.role === 'admin';
+        const isFranchise = req.franchise && vehicle.franchise &&
+                            vehicle.franchise.toString() === req.franchise.id;
+        if (!isAdmin && !isFranchise) {
+            return res.status(403).json({ success: false, message: 'Not authorized to update this vehicle status' });
+        }
+
+        // If trying to set Available (active), check for conflicting bookings
+        if (dbStatus === 'active') {
+            const Booking = require('../models/bookingModel');
+            const activeBooking = await Booking.findOne({
+                vehicle: req.params.id,
+                booking_status: { $in: ['confirmed', 'ongoing'] }
+            }).select('booking_id booking_status _id');
+
+            if (activeBooking && !force) {
+                // Return conflict info so frontend can show a warning
+                return res.status(409).json({
+                    success: false,
+                    conflict: true,
+                    message: `Vehicle has an active booking (${activeBooking.booking_status.toUpperCase()}, ID: ${activeBooking.booking_id}). Send force: true to override.`,
+                    booking_id: activeBooking.booking_id,
+                    booking_status: activeBooking.booking_status,
+                    booking_db_id: activeBooking._id
+                });
+            }
+
+            // Force override: cancel the active booking's vehicle link
+            if (activeBooking && force) {
+                activeBooking.vehicle = null;
+                activeBooking.booking_status = 'cancelled';
+                activeBooking.cancellation_reason = 'Vehicle forcefully marked Available by admin/franchise.';
+                await activeBooking.save();
+            }
+        }
+
+        vehicle.status = dbStatus;
+        await vehicle.save();
+
+        if (req.app.get('io')) {
+            req.app.get('io').emit('admin_data_changed');
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Vehicle status updated to '${dbStatus}' successfully`,
+            data: vehicle
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
 };

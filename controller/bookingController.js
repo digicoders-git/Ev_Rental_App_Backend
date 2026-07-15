@@ -129,11 +129,17 @@ exports.createBooking = async (req, res) => {
                 const franchiseData = await FranchiseStore.findById(vehicleData.franchise);
 
                 if (franchiseData) {
-                    if (franchiseData.payment_model === 'direct' && franchiseData.razorpay_key_id && franchiseData.razorpay_key_secret) {
+                    const GlobalSetting = require('../models/globalSettingModel');
+                    const globalSettingObj = await GlobalSetting.findOne({ key: 'global_payment_mode' });
+                    const globalPaymentMode = globalSettingObj ? globalSettingObj.value : 'central';
+
+                    if (globalPaymentMode === 'direct' && franchiseData.razorpay_key_id && franchiseData.razorpay_key_secret) {
+                        // Direct Settlement Mode
                         rzpKeyId = franchiseData.razorpay_key_id;
                         rzpKeySecret = franchiseData.razorpay_key_secret;
                         paymentGatewayUsed = 'direct';
-                    } else if (franchiseData.payment_model === 'split' && franchiseData.razorpay_linked_account_id) {
+                    } else if (globalPaymentMode === 'central' && franchiseData.razorpay_linked_account_id) {
+                        // Central Collection Mode with Auto Payout (Razorpay Route Split)
                         const amountInPaise = Math.round(grand_total * 100);
                         const franchiseShare = Math.round(amountInPaise * ((franchiseData.franchise_share_percentage || 80) / 100));
                         rzpOptionsExtras = {
@@ -185,6 +191,7 @@ exports.createBooking = async (req, res) => {
             ...razorpayOrderData
         });
     } catch (error) {
+        console.error("DEBUG BOOKING ERROR:", error);
         res.status(400).json({ success: false, message: error.message });
     }
 };

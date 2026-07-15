@@ -18,6 +18,10 @@ connectDB();
 const { startInstallmentScheduler } = require('./utils/installmentScheduler');
 startInstallmentScheduler();
 
+// Start settlement cron
+const { startSettlementCron } = require('./utils/settlementCron');
+startSettlementCron();
+
 
 const app = express();
 const server = http.createServer(app);

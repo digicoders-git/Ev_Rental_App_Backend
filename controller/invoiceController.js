@@ -59,8 +59,12 @@ exports.getAllInvoices = async (req, res) => {
         let query = {};
         
         // If franchise is logged in, restrict to their invoices
-        if (req.user && req.user.role === 'franchise') {
+        if (req.franchise) {
+            query.franchise = req.franchise._id;
+        } else if (req.user && req.user.role === 'franchise') {
             query.franchise = req.user.franchiseId;
+        } else if (req.user && req.user.role === 'user') {
+            query.user = req.user._id;
         } else if (req.query.franchiseId) {
             // If admin filters by franchise
             query.franchise = req.query.franchiseId === 'platform' ? null : req.query.franchiseId;

@@ -175,6 +175,13 @@ exports.getDashboardStats = async (req, res) => {
             .populate('user', 'name')
             .populate('vehicle', 'vehicle_name');
 
+        // Recent Settlements for Dashboard
+        const Settlement = require('../models/settlementModel');
+        const recentSettlements = await Settlement.find()
+            .limit(5)
+            .sort('-createdAt')
+            .populate('franchise', 'store_name');
+
         res.status(200).json({ 
             success: true, 
             data: { 
@@ -187,6 +194,12 @@ exports.getDashboardStats = async (req, res) => {
                             b.booking_status === 'ongoing' ? 'Ongoing' :
                             b.booking_status === 'completed' ? 'Completed' :
                             b.booking_status === 'pending' ? 'Pending' : 'Cancelled'
+                })),
+                recentSettlements: recentSettlements.map(s => ({
+                    id: s.settlement_id,
+                    franchise: s.franchise?.store_name || 'Unknown',
+                    amount: s.final_payout,
+                    date: s.date_to
                 }))
             } 
         });

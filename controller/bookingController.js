@@ -67,14 +67,19 @@ exports.createBooking = async (req, res) => {
 
         // 3. Simple calculation (In a real app, calculate based on days)
         // For now, take amounts from body or use defaults if not provided
-        const total_amount = req.body.total_amount !== undefined ? req.body.total_amount : planData.price;
+        const plan_price_inclusive = req.body.total_amount !== undefined ? req.body.total_amount : planData.price;
         const security_deposit = req.body.security_deposit !== undefined ? req.body.security_deposit : planData.security_deposit;
         const discount_amount = req.body.discount_amount || 0;
         
-        // Calculate 5% GST on base rent (total_amount)
-        const gst_amount = req.body.gst_amount !== undefined ? req.body.gst_amount : Math.round(total_amount * 0.05);
+        // Rent includes 5% GST
+        const base_rent = Number((plan_price_inclusive / 1.05).toFixed(2));
+        const calculated_gst = Number((plan_price_inclusive - base_rent).toFixed(2));
         
-        const grand_total = total_amount + gst_amount + security_deposit - discount_amount;
+        const total_amount = base_rent;
+        const gst_amount = req.body.gst_amount !== undefined ? req.body.gst_amount : calculated_gst;
+        
+        // Since base_rent + calculated_gst = plan_price_inclusive
+        const grand_total = Math.round(total_amount + gst_amount + security_deposit - discount_amount);
 
         bookingUserId = req.user ? req.user.id : null;
         let creatorName = req.user ? (req.user.name || 'User') : 'Franchise/Admin';

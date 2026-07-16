@@ -1400,3 +1400,112 @@ exports.unassignVehicle = async (req, res) => {
     }
 };
 
+// @desc    Request vehicle submission (Driver/User)
+// @route   POST /api/bookings/:id/submit-vehicle
+// @access  Private/User
+exports.requestVehicleSubmission = async (req, res) => {
+    try {
+        const booking = await Booking.findById(req.params.id);
+        if (!booking) {
+            return res.status(404).json({ success: false, message: 'Booking not found' });
+        }
+        
+        if (booking.user.toString() !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'Not authorized' });
+        }
+
+        // Check for dues
+        let totalDues = booking.due_amount || 0;
+        
+        if (booking.payment_installments && booking.payment_installments.length > 0) {
+            const unpaidInst = booking.payment_installments.filter(i => i.status === 'pending' || i.status === 'overdue');
+            if (unpaidInst.length > 0) {
+                const instSum = unpaidInst.reduce((sum, i) => sum + i.amount, 0);
+                if (instSum > totalDues) {
+                    totalDues = instSum; // use highest required payment
+                }
+            }
+        }
+
+        if (totalDues > 0 || booking.payment_status !== 'paid') {
+            return res.status(400).json({ 
+                success: false, 
+                message: `You cannot submit the vehicle. Pending Due: ₹${totalDues}. Please clear all dues before submitting the vehicle.` 
+            });
+        }
+
+        booking.return_status = 'submission_pending';
+        await booking.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Vehicle submission request sent successfully. Please hand over the vehicle. Your submission will be confirmed after Admin verifies the vehicle.',
+            data: booking
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Approve vehicle submission (Admin/Franchisee)
+// @route   POST /api/bookings/:id/approve-submission
+// @access  Private/Admin
+exports.approveVehicleSubmission = async (req, res) => {
+    try {
+        const booking = await Booking.findById(req.params.id).populate('vehicle');
+        if (!booking) {
+            return res.status(404).json({ success: false, message: 'Booking not found' });
+        }
+
+        if (booking.return_status !== 'submission_pending') {
+            return res.status(400).json({ success: false, message: 'No pending submission request for this booking' });
+        }
+
+        booking.return_status = 'approved';
+        booking.booking_status = 'completed';
+        booking.actual_return_date = new Date();
+
+        if (booking.vehicle) {
+            const Vehicle = require('../models/vehicleModel');
+            await Vehicle.findByIdAndUpdate(booking.vehicle._id, { status: 'available' });
+        }
+
+        await booking.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Vehicle submission approved successfully.',
+            data: booking
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Reject vehicle submission (Admin/Franchisee)
+// @route   POST /api/bookings/:id/reject-submission
+// @access  Private/Admin
+exports.rejectVehicleSubmission = async (req, res) => {
+    try {
+        const booking = await Booking.findById(req.params.id);
+        if (!booking) {
+            return res.status(404).json({ success: false, message: 'Booking not found' });
+        }
+
+        if (booking.return_status !== 'submission_pending') {
+            return res.status(400).json({ success: false, message: 'No pending submission request for this booking' });
+        }
+
+        booking.return_status = 'rejected';
+        await booking.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Vehicle submission rejected.',
+            data: booking
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+

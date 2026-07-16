@@ -125,7 +125,12 @@ const bookingSchema = new mongoose.Schema({
             added_by: { type: String, enum: ['admin', 'franchise'], default: 'admin' },
             createdAt: { type: Date, default: Date.now }
         }
-    ]
+    ],
+    return_status: {
+        type: String,
+        enum: ['none', 'submission_pending', 'approved', 'rejected'],
+        default: 'none'
+    }
 }, {
     timestamps: true,
     toJSON: { virtuals: true },

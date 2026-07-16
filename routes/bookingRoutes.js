@@ -24,7 +24,10 @@ const {
     payInstallmentWithWallet,
     verifyPayment,
     changeAssignedVehicle,
-    unassignVehicle
+    unassignVehicle,
+    requestVehicleSubmission,
+    approveVehicleSubmission,
+    rejectVehicleSubmission
 } = require('../controller/bookingController');
 const { protect, admin, franchiseProtect, anyProtect } = require('../middleware/authMiddleware');
 
@@ -68,5 +71,10 @@ router.post('/:id/damage-charge', anyProtect, addDamageCharge);
 
 // Wallet Payments
 router.post('/:id/pay-with-wallet', protect, payBookingWithWallet);
+
+// Vehicle Submission Flow
+router.post('/:id/submit-vehicle', protect, requestVehicleSubmission);
+router.post('/:id/approve-submission', anyProtect, approveVehicleSubmission);
+router.post('/:id/reject-submission', anyProtect, rejectVehicleSubmission);
 
 module.exports = router;

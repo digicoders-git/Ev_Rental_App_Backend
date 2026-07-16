@@ -51,38 +51,14 @@ exports.submitKYC = async (req, res) => {
             return res.status(400).json({ success: false, message: 'All 4 KYC document files (Aadhar Front, Aadhar Back, PAN Card, Selfie) are required.' });
         }
 
-        // Verify Razorpay payment
-        const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
-        
-        if (!existingKyc || !existingKyc.registration_fee_paid) {
-            if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
-                return res.status(400).json({ success: false, message: 'Registration fee payment details are required.' });
-            }
-
-            const body = razorpay_order_id + "|" + razorpay_payment_id;
-            const expectedSignature = crypto
-                .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-                .update(body.toString())
-                .digest("hex");
-
-            if (expectedSignature !== razorpay_signature) {
-                return res.status(400).json({ success: false, message: 'Invalid payment signature. Registration fee verification failed.' });
-            }
-        }
-
         const kycData = { 
             user: userId, 
             name, 
             mobileNumber, 
-            status: 'pending' 
+            status: 'pending',
+            registration_fee_paid: true, // Auto-set to true since fee is removed
+            registration_fee_amount: 0
         };
-
-        if (!existingKyc || !existingKyc.registration_fee_paid) {
-            kycData.registration_fee_paid = true;
-            kycData.registration_fee_amount = 49;
-            kycData.razorpay_payment_id = req.body.razorpay_payment_id;
-            kycData.razorpay_order_id = req.body.razorpay_order_id;
-        }
 
         const fileFields = ['aadharFront', 'aadharBack', 'panCard', 'selfie'];
         fileFields.forEach(field => {

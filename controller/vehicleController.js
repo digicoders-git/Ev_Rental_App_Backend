@@ -68,12 +68,6 @@ exports.getAllVehicles = async (req, res) => {
             query.category = category;
         }
 
-        const Booking = require('../models/bookingModel');
-        const busyBookings = await Booking.find({ 
-            booking_status: { $in: ['confirmed', 'ongoing'] } 
-        }).select('vehicle');
-        const busyVehicleIds = busyBookings.map(b => b.vehicle ? b.vehicle.toString() : '');
-
         const vehicles = await Vehicle.find(query)
             .populate('franchise', 'store_name')
             .populate('category', 'name')
@@ -81,7 +75,7 @@ exports.getAllVehicles = async (req, res) => {
         
         const data = vehicles.map(v => {
             const vObj = v.toObject();
-            vObj.is_busy = busyVehicleIds.includes(v._id.toString());
+            vObj.is_busy = false; // Removed to allow fully dynamic multiple bookings
             return vObj;
         });
 
@@ -236,15 +230,9 @@ exports.getMyFranchiseVehicles = async (req, res) => {
         const vehicles = await Vehicle.find(query).sort('-createdAt').populate('category', 'name');
 
         // Add is_busy flag based on active bookings
-        const Booking = require('../models/bookingModel');
-        const busyBookings = await Booking.find({
-            booking_status: { $in: ['confirmed', 'ongoing'] }
-        }).select('vehicle');
-        const busyVehicleIds = busyBookings.map(b => b.vehicle ? b.vehicle.toString() : '');
-
         const data = vehicles.map(v => {
             const vObj = v.toObject();
-            vObj.is_busy = busyVehicleIds.includes(v._id.toString());
+            vObj.is_busy = false; // Removed to allow fully dynamic multiple bookings
             return vObj;
         });
         
@@ -385,31 +373,7 @@ exports.updateVehicleStatus = async (req, res) => {
 
         // If trying to set Available (active), check for conflicting bookings
         if (dbStatus === 'active') {
-            const Booking = require('../models/bookingModel');
-            const activeBooking = await Booking.findOne({
-                vehicle: req.params.id,
-                booking_status: { $in: ['confirmed', 'ongoing'] }
-            }).select('booking_id booking_status _id');
-
-            if (activeBooking && !force) {
-                // Return conflict info so frontend can show a warning
-                return res.status(409).json({
-                    success: false,
-                    conflict: true,
-                    message: `Vehicle has an active booking (${activeBooking.booking_status.toUpperCase()}, ID: ${activeBooking.booking_id}). Send force: true to override.`,
-                    booking_id: activeBooking.booking_id,
-                    booking_status: activeBooking.booking_status,
-                    booking_db_id: activeBooking._id
-                });
-            }
-
-            // Force override: cancel the active booking's vehicle link
-            if (activeBooking && force) {
-                activeBooking.vehicle = null;
-                activeBooking.booking_status = 'cancelled';
-                activeBooking.cancellation_reason = 'Vehicle forcefully marked Available by admin/franchise.';
-                await activeBooking.save();
-            }
+            // We no longer throw conflict or cancel bookings. Admin can dynamically use the vehicle multiple times.
         }
 
         vehicle.status = dbStatus;

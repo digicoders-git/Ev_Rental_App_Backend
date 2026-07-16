@@ -31,9 +31,9 @@ const rentalPlanSchema = new mongoose.Schema({
         type: Number, // In minutes
         default: 30
     },
-    late_fee_per_hour: {
+    late_fee_per_day: {
         type: Number,
-        default: 100 // Default late fee ₹100/hr
+        default: 200 // Default late fee ₹200/day
     },
     status: {
         type: String,

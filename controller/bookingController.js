@@ -600,7 +600,6 @@ exports.calculateLateFee = async (req, res) => {
         const actualReturn = new Date(); // Current time
 
         let lateFee = 0;
-        let hoursLate = 0;
         let diffInMins = 0;
 
         if (actualReturn > scheduledReturn) {
@@ -611,8 +610,8 @@ exports.calculateLateFee = async (req, res) => {
             const effectiveLateMins = diffInMins - (booking.plan.grace_period || 30);
             
             if (effectiveLateMins > 0) {
-                hoursLate = Math.ceil(effectiveLateMins / 60);
-                lateFee = hoursLate * (booking.plan.late_fee_per_hour || 100);
+                const daysLate = Math.ceil(effectiveLateMins / (60 * 24));
+                lateFee = daysLate * (booking.plan.late_fee_per_day || 200);
             }
         }
 
@@ -620,7 +619,7 @@ exports.calculateLateFee = async (req, res) => {
             success: true,
             data: {
                 minutes_late: diffInMins,
-                hours_late_after_grace: hoursLate,
+                days_late_after_grace: Math.ceil((diffInMins - (booking.plan.grace_period || 30)) > 0 ? (diffInMins - (booking.plan.grace_period || 30)) / (60 * 24) : 0),
                 late_fee: lateFee,
                 scheduled_return: scheduledReturn,
                 actual_return_current: actualReturn,
@@ -654,8 +653,8 @@ exports.returnVehicle = async (req, res) => {
             const diffInMins = Math.floor((actualReturn - scheduledReturn) / (1000 * 60));
             const effectiveLateMins = diffInMins - (booking.plan.grace_period || 30);
             if (effectiveLateMins > 0) {
-                const hoursLate = Math.ceil(effectiveLateMins / 60);
-                lateFee = hoursLate * (booking.plan.late_fee_per_hour || 100);
+                const daysLate = Math.ceil(effectiveLateMins / (60 * 24));
+                lateFee = daysLate * (booking.plan.late_fee_per_day || 200);
             }
         }
 

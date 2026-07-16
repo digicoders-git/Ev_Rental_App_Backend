@@ -78,7 +78,7 @@ exports.deletePlan = async (req, res) => {
 // @access  Private/Admin
 exports.updatePlanPrice = async (req, res) => {
     try {
-        const { price, late_fee_per_hour, security_deposit } = req.body;
+        const { price, late_fee_per_day, security_deposit } = req.body;
         const plan = await RentalPlan.findById(req.params.id);
 
         if (!plan) {
@@ -86,7 +86,7 @@ exports.updatePlanPrice = async (req, res) => {
         }
 
         if (price !== undefined) plan.price = price;
-        if (late_fee_per_hour !== undefined) plan.late_fee_per_hour = late_fee_per_hour;
+        if (late_fee_per_day !== undefined) plan.late_fee_per_day = late_fee_per_day;
         if (security_deposit !== undefined) plan.security_deposit = security_deposit;
 
         await plan.save();

@@ -85,6 +85,12 @@ exports.getAllVehicles = async (req, res) => {
             return vObj;
         });
 
+        // Sort: Available (is_busy = false) at top, Booked (is_busy = true) at bottom
+        data.sort((a, b) => {
+            if (a.is_busy === b.is_busy) return 0;
+            return a.is_busy ? 1 : -1;
+        });
+
         res.status(200).json({ success: true, count: vehicles.length, data: data });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -240,6 +246,12 @@ exports.getMyFranchiseVehicles = async (req, res) => {
             const vObj = v.toObject();
             vObj.is_busy = busyVehicleIds.includes(v._id.toString());
             return vObj;
+        });
+        
+        // Sort: Available (is_busy = false) at top, Booked (is_busy = true) at bottom
+        data.sort((a, b) => {
+            if (a.is_busy === b.is_busy) return 0;
+            return a.is_busy ? 1 : -1;
         });
         
         res.status(200).json({ 

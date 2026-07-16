@@ -229,12 +229,32 @@ exports.addRider = async (req, res) => {
 exports.getAllUsers = async (req, res) => {
     try {
         // Explicitly filter for users with role 'user' and exclude any 'admin' accounts
-        const users = await User.find({ role: 'user' }).populate('referred_by', 'name driver_id mobile').sort({ createdAt: -1 });
+        const users = await User.find({ role: 'user' })
+            .populate('referred_by', 'name driver_id mobile')
+            .lean()
+            .sort({ createdAt: -1 });
+        
+        // Fetch all ongoing/confirmed bookings to map assigned vehicles
+        const ongoingBookings = await Booking.find({ booking_status: { $in: ['ongoing', 'confirmed'] } })
+            .populate('vehicle', 'registration_number vehicle_name')
+            .lean();
+
+        const bookingsMap = {};
+        ongoingBookings.forEach(b => {
+            if (b.user && b.vehicle) {
+                bookingsMap[b.user.toString()] = b.vehicle;
+            }
+        });
+
+        const usersWithVehicle = users.map(u => {
+            u.assigned_vehicle = bookingsMap[u._id.toString()] || null;
+            return u;
+        });
         
         res.status(200).json({
             success: true,
-            count: users.length,
-            data: users
+            count: usersWithVehicle.length,
+            data: usersWithVehicle
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

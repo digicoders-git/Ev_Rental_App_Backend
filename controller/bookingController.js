@@ -1118,10 +1118,12 @@ exports.setupInstallments = async (req, res) => {
         if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
 
         const totalInstallmentAmount = installments.reduce((sum, i) => sum + Number(i.amount), 0);
-        const remaining = booking.grand_total - booking.total_paid;
-
-        if (Math.round(totalInstallmentAmount) > Math.round(remaining)) {
-            return res.status(400).json({ success: false, message: `Total installments (${totalInstallmentAmount}) cannot exceed due amount (${remaining})` });
+        
+        // Dynamically update grand_total if the new installments exceed the current due amount.
+        // This allows fully dynamic 2-3 months extensions via weekly installments.
+        const requiredGrandTotal = booking.total_paid + totalInstallmentAmount;
+        if (requiredGrandTotal > booking.grand_total) {
+            booking.grand_total = requiredGrandTotal;
         }
 
         booking.payment_installments = installments.map((inst, idx) => ({

@@ -599,6 +599,10 @@ exports.calculateLateFee = async (req, res) => {
         const scheduledReturn = new Date(booking.end_date);
         const actualReturn = new Date(); // Current time
 
+        const GlobalSetting = require('../models/globalSettingModel');
+        const globalLateFeeSetting = await GlobalSetting.findOne({ key: 'late_fee_per_day' });
+        const globalLateFee = globalLateFeeSetting ? Number(globalLateFeeSetting.value) : 200;
+
         let lateFee = 0;
         let diffInMins = 0;
 
@@ -611,7 +615,7 @@ exports.calculateLateFee = async (req, res) => {
             
             if (effectiveLateMins > 0) {
                 const daysLate = Math.ceil(effectiveLateMins / (60 * 24));
-                lateFee = daysLate * (booking.plan.late_fee_per_day || 200);
+                lateFee = daysLate * globalLateFee;
             }
         }
 
@@ -648,13 +652,17 @@ exports.returnVehicle = async (req, res) => {
         const scheduledReturn = new Date(booking.end_date);
         const actualReturn = new Date(); // Current time
 
+        const GlobalSetting = require('../models/globalSettingModel');
+        const globalLateFeeSetting = await GlobalSetting.findOne({ key: 'late_fee_per_day' });
+        const globalLateFee = globalLateFeeSetting ? Number(globalLateFeeSetting.value) : 200;
+
         let lateFee = 0;
         if (actualReturn > scheduledReturn) {
             const diffInMins = Math.floor((actualReturn - scheduledReturn) / (1000 * 60));
             const effectiveLateMins = diffInMins - (booking.plan.grace_period || 30);
             if (effectiveLateMins > 0) {
                 const daysLate = Math.ceil(effectiveLateMins / (60 * 24));
-                lateFee = daysLate * (booking.plan.late_fee_per_day || 200);
+                lateFee = daysLate * globalLateFee;
             }
         }
 

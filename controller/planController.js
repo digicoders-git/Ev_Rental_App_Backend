@@ -18,7 +18,18 @@ exports.createPlan = async (req, res) => {
 exports.getAllPlans = async (req, res) => {
     try {
         const plans = await RentalPlan.find().sort('-createdAt');
-        res.status(200).json({ success: true, count: plans.length, data: plans });
+        const GlobalSetting = require('../models/globalSettingModel');
+        const globalLateFeeSetting = await GlobalSetting.findOne({ key: 'late_fee_per_day' });
+        const globalLateFee = globalLateFeeSetting ? Number(globalLateFeeSetting.value) : 200;
+
+        const dynamicPlans = plans.map(p => {
+            const planObj = p.toObject();
+            // Fully dynamic: use global setting for late fee
+            planObj.late_fee_per_day = globalLateFee;
+            return planObj;
+        });
+
+        res.status(200).json({ success: true, count: dynamicPlans.length, data: dynamicPlans });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

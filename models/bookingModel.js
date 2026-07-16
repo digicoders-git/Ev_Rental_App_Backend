@@ -130,6 +130,10 @@ const bookingSchema = new mongoose.Schema({
         type: String,
         enum: ['none', 'submission_pending', 'approved', 'rejected'],
         default: 'none'
+    },
+    is_vehicle_released: {
+        type: Boolean,
+        default: false
     }
 }, {
     timestamps: true,

@@ -40,8 +40,25 @@ exports.createBooking = async (req, res) => {
             }
         }
 
-        // 1b. Check for Overlapping Bookings (Removed to allow fully dynamic multiple bookings per vehicle entry)
-        // Admin requested that multiple users should be able to book the same vehicle model.
+        // 1b. Check for Overlapping Bookings
+        const overlap = await Booking.findOne({
+            vehicle,
+            booking_status: { $in: ['confirmed', 'ongoing'] },
+            is_vehicle_released: { $ne: true },
+            $or: [
+                {
+                    start_date: { $lte: new Date(end_date) },
+                    end_date: { $gte: new Date(start_date) }
+                }
+            ]
+        });
+
+        if (overlap) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Vehicle is already booked/on a ride for the selected time period.' 
+            });
+        }
 
         // 2. Check if plan exists
         const planData = await RentalPlan.findById(plan);

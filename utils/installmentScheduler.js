@@ -10,9 +10,9 @@ const formatDate = (date) =>
 const getMessage = (daysLeft, amount, bookingId, dueDate) => {
     const amt = `₹${Number(amount).toLocaleString('en-IN')}`;
     const dateStr = formatDate(dueDate);
-    if (daysLeft === 2) return {
-        title: '📅 Payment Due in 2 Days',
-        body: `Your installment of ${amt} for booking #${bookingId} is due on ${dateStr} (2 days left). Please arrange payment on time.`,
+    if (daysLeft === 3) return {
+        title: '📅 Payment Due in 3 Days',
+        body: `Your installment of ${amt} for booking #${bookingId} is due on ${dateStr} (3 days left). Please arrange payment on time.`,
     };
     if (daysLeft === 1) return {
         title: '⏰ Payment Due Tomorrow!',
@@ -32,6 +32,8 @@ const getForceMessage = (amount, bookingId, dueDate) => {
         body: `Your installment of ${amt} for booking #${bookingId} is scheduled on ${dateStr}. Please ensure timely payment.`,
     };
 };
+
+let ioInstance = null;
 
 const runInstallmentNotifications = async (force = false) => {
     try {
@@ -64,9 +66,9 @@ const runInstallmentNotifications = async (force = false) => {
                     bookingModified = true;
                 }
 
-                // Normal mode: only 0, 1, 2 days before due
+                // Normal mode: trigger exactly 3 days before and 0 days before (on due date)
                 // Force mode: send to ALL pending installments regardless of date
-                if (!force && ![0, 1, 2].includes(daysLeft) && daysLeft >= 0) continue;
+                if (!force && ![0, 3].includes(daysLeft) && daysLeft >= 0) continue;
 
                 const notifyDays = force ? daysLeft : (daysLeft <= 0 ? 0 : daysLeft);
                 const { title, body } = force
@@ -93,6 +95,20 @@ const runInstallmentNotifications = async (force = false) => {
                     due_date: inst.due_date,
                 });
 
+                // Send Admin Notification & Emit Socket Event
+                await sendNotification({
+                    recipient_role: 'admin',
+                    title: `Payment Due Alert (Booking #${booking.booking_id})`,
+                    message: `Customer ${user.name || user.mobile} has a payment of ₹${inst.amount} due ${daysLeft === 0 ? 'TODAY' : `in ${daysLeft} days`}.`,
+                    type: 'payment',
+                    related_id: booking._id,
+                    due_date: inst.due_date,
+                });
+                
+                if (ioInstance) {
+                    ioInstance.emit('admin_data_changed', { type: 'payment_reminder', message: 'New payment due reminder' });
+                }
+
                 sent++;
             }
 
@@ -108,8 +124,9 @@ const runInstallmentNotifications = async (force = false) => {
 };
 
 // Run every day at 9:00 AM
-const startInstallmentScheduler = () => {
-    cron.schedule('0 9 * * *', runInstallmentNotifications, { timezone: 'Asia/Kolkata' });
+const startInstallmentScheduler = (io) => {
+    if (io) ioInstance = io;
+    cron.schedule('0 9 * * *', () => runInstallmentNotifications(false), { timezone: 'Asia/Kolkata' });
     console.log('[InstallmentScheduler] Started — runs daily at 9:00 AM IST');
 };
 

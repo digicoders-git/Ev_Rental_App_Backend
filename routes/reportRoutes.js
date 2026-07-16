@@ -6,7 +6,8 @@ const {
     getFranchisePerformance,
     exportBookingsCSV,
     getRevenueReport,
-    getInstallmentHealth
+    getInstallmentHealth,
+    resetDashboardStats
 } = require('../controller/reportController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
@@ -14,6 +15,7 @@ const { protect, admin } = require('../middleware/authMiddleware');
 router.use(protect, admin);
 
 router.get('/dashboard-stats', getDashboardStats);
+router.post('/reset-stats', resetDashboardStats);
 router.get('/revenue-analysis', getRevenueAnalysis);
 router.get('/revenue-report', getRevenueReport);
 router.get('/franchise-performance', getFranchisePerformance);

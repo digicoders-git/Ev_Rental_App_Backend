@@ -14,10 +14,6 @@ dotenv.config();
 // Connect to Database
 connectDB();
 
-// Start installment reminder scheduler
-const { startInstallmentScheduler } = require('./utils/installmentScheduler');
-startInstallmentScheduler();
-
 // Start settlement cron
 const { startSettlementCron } = require('./utils/settlementCron');
 startSettlementCron();
@@ -35,6 +31,10 @@ const io = new Server(server, {
 
 // Store io instance globally so controllers can emit
 app.set('io', io);
+
+// Start installment reminder scheduler with io
+const { startInstallmentScheduler } = require('./utils/installmentScheduler');
+startInstallmentScheduler(io);
 
 // Socket.IO connection handler
 io.on('connection', (socket) => {

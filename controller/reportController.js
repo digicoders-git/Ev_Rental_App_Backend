@@ -79,13 +79,14 @@ exports.getDashboardStats = async (req, res) => {
             categories: categoryStats,
             bookings: {
                 total: await Booking.countDocuments(),
-                active: await Booking.countDocuments({ booking_status: { $in: ['confirmed', 'ongoing'] } }),
+                active: await Booking.countDocuments({ booking_status: { $in: ['confirmed', 'ongoing'] }, vehicle: { $ne: null } }),
                 completed: await Booking.countDocuments({ booking_status: 'completed' }),
                 pending: await Booking.countDocuments({ booking_status: 'pending' }),
                 cancelled: await Booking.countDocuments({ booking_status: 'cancelled' })
             },
             users: {
                 total: await User.countDocuments({ role: 'user' }),
+                active: (await Booking.distinct('user', { booking_status: { $in: ['confirmed', 'ongoing'] }, vehicle: { $ne: null } })).length,
                 kyc_verified: await User.countDocuments({ isKycVerified: true }),
                 kyc_pending: await KYC.countDocuments({ status: 'pending' }),
                 blocked: await User.countDocuments({ status: 'blocked' })
@@ -580,3 +581,34 @@ exports.getInstallmentHealth = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// @desc    Reset dashboard stats (deletes bookings within date range)
+// @route   POST /api/reports/reset-stats
+// @access  Private/Admin
+exports.resetDashboardStats = async (req, res) => {
+    try {
+        const { fromDate, toDate } = req.body;
+        if (!fromDate || !toDate) {
+            return res.status(400).json({ success: false, message: 'Please provide both fromDate and toDate' });
+        }
+
+        const start = new Date(fromDate);
+        const end = new Date(toDate);
+        end.setHours(23, 59, 59, 999);
+
+        // We delete bookings created within this date range.
+        // This will naturally reset revenue, active rides, completed rides, etc.
+        const result = await Booking.deleteMany({
+            createdAt: { $gte: start, $lte: end }
+        });
+
+        res.status(200).json({
+            success: true,
+            message: `Successfully deleted ${result.deletedCount} bookings from the selected date range. Statistics have been reset.`,
+            deletedCount: result.deletedCount
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+

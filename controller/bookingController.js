@@ -206,7 +206,18 @@ exports.createBooking = async (req, res) => {
                 ...rzpOptionsExtras
             };
 
-            const order = await razorpay.orders.create(options);
+            let order;
+            try {
+                order = await razorpay.orders.create(options);
+            } catch (rzpErr) {
+                if (options.transfers) {
+                    console.warn("Razorpay Route failed. Falling back to standard payment.", rzpErr.error ? rzpErr.error.description : rzpErr);
+                    delete options.transfers;
+                    order = await razorpay.orders.create(options);
+                } else {
+                    throw rzpErr;
+                }
+            }
             booking.razorpay_order_id = order.id;
             booking.payment_gateway_used = paymentGatewayUsed;
             booking.razorpay_key_used = rzpKeyId;
@@ -226,7 +237,17 @@ exports.createBooking = async (req, res) => {
         });
     } catch (error) {
         console.error("DEBUG BOOKING ERROR:", error);
-        res.status(400).json({ success: false, message: error.message });
+        
+        let errorMsg = error.message;
+        if (error.error && error.error.description) {
+            errorMsg = error.error.description;
+        } else if (typeof error === 'string') {
+            errorMsg = error;
+        } else if (!errorMsg) {
+            errorMsg = "An unknown error occurred during booking creation.";
+        }
+
+        res.status(400).json({ success: false, message: errorMsg });
     }
 };
 

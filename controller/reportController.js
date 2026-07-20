@@ -344,15 +344,30 @@ exports.exportBookingsCSV = async (req, res) => {
 // @access  Private/Admin
 exports.getRevenueReport = async (req, res) => {
     try {
-        const { timeframe } = req.query; // 'weekly', 'monthly', 'yearly'
+        const { timeframe, startDate: customStart, endDate: customEnd } = req.query;
         
-        // 1. Chart Data (Revenue vs Refunds)
-        let daysToLookBack = timeframe === 'monthly' ? 30 : timeframe === 'yearly' ? 365 : timeframe === 'all' ? 36500 : 7;
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - daysToLookBack);
+        let queryStartDate = new Date();
+        let queryEndDate = new Date();
+        let isCustom = false;
 
+        if (customStart && customEnd) {
+            queryStartDate = new Date(customStart);
+            queryEndDate = new Date(customEnd);
+            queryEndDate.setHours(23, 59, 59, 999); // end of the day
+            isCustom = true;
+        } else {
+            let daysToLookBack = timeframe === 'monthly' ? 30 : timeframe === 'yearly' ? 365 : timeframe === 'all' ? 36500 : 7;
+            queryStartDate.setDate(queryStartDate.getDate() - daysToLookBack);
+        }
+
+        const matchQuery = { 
+            createdAt: { $gte: queryStartDate, ...(isCustom ? { $lte: queryEndDate } : {}) },
+            payment_status: 'paid' 
+        };
+
+        // 1. Chart Data (Revenue vs Refunds)
         const chartStats = await Booking.aggregate([
-            { $match: { createdAt: { $gte: startDate }, payment_status: 'paid' } },
+            { $match: matchQuery },
             {
                 $group: {
                     _id: {
@@ -361,7 +376,7 @@ exports.getRevenueReport = async (req, res) => {
                         year: { $year: "$createdAt" }
                     },
                     revenue: { $sum: "$grand_total" },
-                    refunds: { $sum: 0 }, // Assuming refunds logic is not yet implemented, setting to 0
+                    refunds: { $sum: 0 },
                     bookings: { $sum: 1 }
                 }
             },
@@ -370,7 +385,7 @@ exports.getRevenueReport = async (req, res) => {
 
         // Format chart data for frontend (e.g., labels like "Mon", "Jan")
         const formattedChartData = chartStats.map(stat => ({
-            period: timeframe === 'weekly' ? new Date(stat._id.year, stat._id.month - 1, stat._id.day).toLocaleDateString('en-US', { weekday: 'short' }) :
+            period: (timeframe === 'weekly' || isCustom) ? new Date(stat._id.year, stat._id.month - 1, stat._id.day).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) :
                     timeframe === 'monthly' ? `${stat._id.day}/${stat._id.month}` :
                     new Date(stat._id.year, stat._id.month - 1, 1).toLocaleDateString('en-US', { month: 'short', year: timeframe === 'all' ? '2-digit' : undefined }),
             revenue: stat.revenue,
@@ -378,9 +393,9 @@ exports.getRevenueReport = async (req, res) => {
             bookings: stat.bookings
         }));
 
-        // 2. Franchise Performance (Already exists in other function but including here for unified response)
+        // 2. Franchise Performance
         const franchiseData = await Booking.aggregate([
-            { $match: { payment_status: 'paid' } },
+            { $match: matchQuery },
             {
                 $lookup: {
                     from: 'vehicles',
@@ -418,7 +433,7 @@ exports.getRevenueReport = async (req, res) => {
 
         // 3. Payment Methods Share
         const paymentMethods = await Booking.aggregate([
-            { $match: { payment_status: 'paid' } },
+            { $match: matchQuery },
             {
                 $group: {
                     _id: '$payment_method',
@@ -426,7 +441,7 @@ exports.getRevenueReport = async (req, res) => {
                 }
             }
         ]);
-        const totalPaidBookings = await Booking.countDocuments({ payment_status: 'paid' });
+        const totalPaidBookings = await Booking.countDocuments(matchQuery);
         const formattedMethods = paymentMethods.map(m => ({
             name: m._id === 'online' ? 'UPI' : m._id.toUpperCase(),
             value: totalPaidBookings ? Math.round((m.value / totalPaidBookings) * 100) : 0,
@@ -435,7 +450,7 @@ exports.getRevenueReport = async (req, res) => {
 
         // 4. Plan-wise Revenue
         const planData = await Booking.aggregate([
-            { $match: { payment_status: 'paid' } },
+            { $match: matchQuery },
             {
                 $group: {
                     _id: '$plan',
@@ -463,7 +478,7 @@ exports.getRevenueReport = async (req, res) => {
         ]);
 
         // 5. Recent Transactions
-        const recentTx = await Booking.find({ payment_status: 'paid' })
+        const recentTx = await Booking.find(matchQuery)
             .limit(5)
             .sort('-createdAt')
             .populate('user', 'name')

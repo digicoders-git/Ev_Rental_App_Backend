@@ -20,7 +20,7 @@ const generateToken = (id) => {
 // @access  Public
 exports.franchiseLogin = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, password, fcm_token } = req.body;
 
         if (!email || !password) {
             return res.status(400).json({ success: false, message: 'Please provide email and password' });
@@ -35,6 +35,11 @@ exports.franchiseLogin = async (req, res) => {
         const isMatch = await store.matchPassword(password);
         if (!isMatch) {
             return res.status(401).json({ success: false, message: 'Invalid credentials' });
+        }
+
+        if (fcm_token) {
+            store.fcm_token = fcm_token;
+            await store.save();
         }
 
         res.status(200).json({
@@ -462,16 +467,25 @@ exports.getAdminRevenueByFranchise = async (req, res) => {
     }
 };
 
-// @desc    Get Franchise History Details (Admin Only)
+// @desc    Get Franchise History Details
 // @route   GET /api/franchise-enquiry/stores/:id/history
 // @access  Private/Admin
 exports.getFranchiseHistory = async (req, res) => {
     try {
         const storeId = req.params.id;
+        const { startDate: customStart, endDate: customEnd } = req.query;
 
         const store = await FranchiseStore.findById(storeId);
         if (!store) {
             return res.status(404).json({ success: false, message: 'Store not found' });
+        }
+
+        let dateFilter = {};
+        if (customStart && customEnd) {
+            const queryStartDate = new Date(customStart);
+            const queryEndDate = new Date(customEnd);
+            queryEndDate.setHours(23, 59, 59, 999);
+            dateFilter = { createdAt: { $gte: queryStartDate, $lte: queryEndDate } };
         }
 
         // 1. Vehicles
@@ -480,18 +494,19 @@ exports.getFranchiseHistory = async (req, res) => {
         const ownedVehicles = await Vehicle.countDocuments({ franchise: storeId, added_by_franchise: true });
 
         // 2. Bookings
-        const totalBookings = await Booking.countDocuments({ franchise: storeId });
-        const pendingBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'pending' });
-        const completedBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'completed' });
-        const ongoingBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'ongoing' });
-        const cancelledBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'cancelled' });
+        const totalBookings = await Booking.countDocuments({ franchise: storeId, ...dateFilter });
+        const pendingBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'pending', ...dateFilter });
+        const completedBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'completed', ...dateFilter });
+        const ongoingBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'ongoing', ...dateFilter });
+        const cancelledBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'cancelled', ...dateFilter });
 
         // 3. Revenue
         const revenueStats = await Booking.aggregate([
             {
                 $match: {
                     franchise: new mongoose.Types.ObjectId(storeId),
-                    booking_status: { $ne: 'cancelled' }
+                    booking_status: { $ne: 'cancelled' },
+                    ...dateFilter
                 }
             },
             {
@@ -509,7 +524,7 @@ exports.getFranchiseHistory = async (req, res) => {
         const totalLateFee = revenueStats.length > 0 ? revenueStats[0].lateFee : 0;
 
         // Fetch list of recent bookings with user/vehicle details
-        const recentBookings = await Booking.find({ franchise: storeId })
+        const recentBookings = await Booking.find({ franchise: storeId, ...dateFilter })
             .populate('user', 'name email mobile')
             .populate('vehicle', 'vehicle_name registration_number')
             .sort('-createdAt')

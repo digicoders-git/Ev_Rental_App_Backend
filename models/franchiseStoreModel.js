@@ -64,6 +64,22 @@ const franchiseStoreSchema = new mongoose.Schema({
         type: Number,
         default: 80
     },
+    wallet_balance: {
+        type: Number,
+        default: 0
+    },
+    fcm_token: {
+        type: String,
+        default: ''
+    },
+    admin_agreement_document: {
+        type: String,
+        default: ""
+    },
+    franchise_agreement_document: {
+        type: String,
+        default: ""
+    },
     razorpay_linked_account_id: {
         type: String,
         default: ""

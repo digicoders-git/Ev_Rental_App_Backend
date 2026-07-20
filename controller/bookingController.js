@@ -1,4 +1,5 @@
 const Booking = require('../models/bookingModel');
+const { creditFranchiseWallet } = require('../utils/franchiseWalletHelper');
 const Vehicle = require('../models/vehicleModel');
 const RentalPlan = require('../models/planModel');
 const User = require('../models/userModel');
@@ -45,12 +46,8 @@ exports.createBooking = async (req, res) => {
             vehicle,
             booking_status: { $in: ['confirmed', 'ongoing'] },
             is_vehicle_released: { $ne: true },
-            $or: [
-                {
-                    start_date: { $lte: new Date(end_date) },
-                    end_date: { $gte: new Date(start_date) }
-                }
-            ]
+            start_date: { $lt: new Date(end_date) },
+            end_date: { $gt: new Date(start_date) }
         });
 
         if (overlap) {
@@ -240,6 +237,7 @@ exports.verifyPayment = async (req, res) => {
         booking.razorpay_payment_id = razorpay_payment_id;
         booking.total_paid = booking.grand_total;
         await booking.save();
+        await creditFranchiseWallet(booking._id, booking.grand_total);
 
         res.status(200).json({
             success: true,
@@ -491,16 +489,23 @@ exports.updateBookingStatus = async (req, res) => {
             }
         }
 
+        let amountToCredit = 0;
         if (payment_status) {
             booking.payment_status = payment_status;
             // If marked as paid, assume the pending grand_total is paid
-            if (payment_status === 'paid') {
+            if (payment_status === 'paid' && (booking.total_paid || 0) < booking.grand_total) {
+                amountToCredit = booking.grand_total - (booking.total_paid || 0);
                 booking.total_paid = booking.grand_total;
             }
         }
         if (transaction_id) booking.transaction_id = transaction_id;
 
         await booking.save();
+        
+        if (amountToCredit > 0) {
+            const { creditFranchiseWallet } = require('../utils/franchiseWalletHelper');
+            await creditFranchiseWallet(booking._id, amountToCredit);
+        }
 
         res.status(200).json({ success: true, message: 'Booking status updated', data: booking });
     } catch (error) {
@@ -718,6 +723,7 @@ exports.markPaymentPaid = async (req, res) => {
         }
 
         await booking.save();
+        await creditFranchiseWallet(booking._id, payAmount);
 
         res.status(200).json({
             success: true,
@@ -1005,13 +1011,15 @@ exports.approveBooking = async (req, res) => {
             _id: { $ne: booking._id }, // Exclude current booking
             vehicle: booking.vehicle._id,
             booking_status: { $in: ['confirmed', 'ongoing'] },
-            $or: [
-                {
-                    start_date: { $lte: booking.end_date },
-                    end_date: { $gte: booking.start_date }
-                }
-            ]
+            start_date: { $lt: booking.end_date },
+            end_date: { $gt: booking.start_date }
         });
+
+        console.log('DEBUG: Approving booking', booking._id, 'for vehicle', booking.vehicle._id);
+        console.log('DEBUG: Found overlap?', overlap ? overlap._id : 'null');
+        if (overlap) {
+            console.log('DEBUG: Overlap details:', overlap.booking_status, overlap.start_date, overlap.end_date);
+        }
 
         if (overlap) {
             return res.status(400).json({ 
@@ -1185,6 +1193,8 @@ exports.payInstallment = async (req, res) => {
         });
 
         await booking.save();
+        await creditFranchiseWallet(booking._id, inst.amount);
+
         res.status(200).json({
             success: true,
             message: `Installment #${inst.installment_no} of ₹${inst.amount} marked as paid`,
@@ -1244,6 +1254,7 @@ exports.payBookingWithWallet = async (req, res) => {
         }
 
         await booking.save();
+        await creditFranchiseWallet(booking._id, Number(amount));
 
         res.status(200).json({
             success: true,
@@ -1357,9 +1368,8 @@ exports.changeAssignedVehicle = async (req, res) => {
             _id: { $ne: booking._id },
             vehicle: newVehicleId,
             booking_status: { $in: ['confirmed', 'ongoing'] },
-            $or: [
-                { start_date: { $lte: booking.end_date }, end_date: { $gte: booking.start_date } }
-            ]
+            start_date: { $lte: booking.end_date },
+            end_date: { $gte: booking.start_date }
         });
 
         if (overlap) {

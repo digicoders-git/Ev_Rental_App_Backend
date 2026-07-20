@@ -228,33 +228,62 @@ exports.addRider = async (req, res) => {
 // @access  Private/Admin
 exports.getAllUsers = async (req, res) => {
     try {
-        // Explicitly filter for users with role 'user' and exclude any 'admin' accounts
-        const users = await User.find({ role: 'user' })
-            .populate('referred_by', 'name driver_id mobile')
+        // Fetch ALL bookings, sorted by newest first, so the latest booking comes first
+        const allBookings = await Booking.find()
+            .populate('user')
+            .populate('vehicle', 'registration_number vehicle_name')
+            .populate('franchise', 'store_name')
             .lean()
             .sort({ createdAt: -1 });
-        
-        // Fetch all ongoing/confirmed bookings to map assigned vehicles
-        const ongoingBookings = await Booking.find({ booking_status: { $in: ['ongoing', 'confirmed'] } })
-            .populate('vehicle', 'registration_number vehicle_name')
-            .lean();
 
-        const bookingsMap = {};
-        ongoingBookings.forEach(b => {
-            if (b.user && b.vehicle) {
-                bookingsMap[b.user.toString()] = b.vehicle;
+        const uniqueUsersMap = {};
+
+        // Loop through all bookings. Since they are sorted newest first,
+        // the first time we see a user, it's their latest booking.
+        allBookings.forEach(b => {
+            if (b.user && b.user.role === 'user') {
+                const userIdStr = b.user._id.toString();
+                if (!uniqueUsersMap[userIdStr]) {
+                    // Include the user and attach their latest booking info
+                    const userObj = { ...b.user };
+                    
+                    // Vehicle might be null if it was deleted, but we still attach it if available
+                    userObj.assigned_vehicle = b.vehicle || null;
+                    userObj.booking_date = b.createdAt; // Latest booking date
+                    
+                    // Franchise details
+                    let franchiseName = 'Main Branch';
+                    if (b.franchise && b.franchise.store_name && b.franchise.store_name.trim() !== '') {
+                        franchiseName = b.franchise.store_name;
+                    }
+                    userObj.franchise_name = franchiseName;
+                    
+                    // Financial details from latest booking
+                    userObj.paid_amount = b.total_paid || 0;
+                    userObj.due_amount = Math.max(0, (b.grand_total || 0) - (b.total_paid || 0));
+                    
+                    // Next installment date (if any pending/overdue)
+                    let next_installment_date = null;
+                    if (b.payment_installments && b.payment_installments.length > 0) {
+                        const pendingInstallments = b.payment_installments.filter(i => i.status === 'pending' || i.status === 'overdue');
+                        if (pendingInstallments.length > 0) {
+                            pendingInstallments.sort((x, y) => new Date(x.due_date) - new Date(y.due_date));
+                            next_installment_date = pendingInstallments[0].due_date;
+                        }
+                    }
+                    userObj.next_installment_date = next_installment_date;
+                    
+                    uniqueUsersMap[userIdStr] = userObj;
+                }
             }
         });
 
-        const usersWithVehicle = users.map(u => {
-            u.assigned_vehicle = bookingsMap[u._id.toString()] || null;
-            return u;
-        });
+        const usersWithAnyBooking = Object.values(uniqueUsersMap);
         
         res.status(200).json({
             success: true,
-            count: usersWithVehicle.length,
-            data: usersWithVehicle
+            count: usersWithAnyBooking.length,
+            data: usersWithAnyBooking
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

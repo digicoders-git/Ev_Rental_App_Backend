@@ -145,7 +145,7 @@ exports.getMyKYCStatus = async (req, res) => {
 // @access  Private/Admin
 exports.getAllKYCSubmissions = async (req, res) => {
     try {
-        const kycList = await KYC.find().populate('user', 'name mobile email').sort('-createdAt');
+        const kycList = await KYC.find().populate('user', 'name mobile email dob kyc_fee_paid kyc_fee_transaction_id current_address permanent_address').sort('-createdAt');
         res.status(200).json({ success: true, count: kycList.length, data: kycList });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -229,15 +229,17 @@ exports.updateKYCStatus = async (req, res) => {
     }
 };
 
-// @desc    Track KYC by Mobile (Admin)
-// @route   GET /api/kyc/admin/track/:mobile
+// @desc    Get KYC by mobile number
+// @route   GET /api/kyc/admin/search/:mobile
 // @access  Private/Admin
 exports.getKYCByMobile = async (req, res) => {
     try {
         const user = await User.findOne({ mobile: req.params.mobile });
-        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-
-        const kyc = await KYC.findOne({ user: user._id }).populate('user', 'name mobile email');
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        
+        const kyc = await KYC.findOne({ user: user._id }).populate('user', 'name mobile email dob kyc_fee_paid kyc_fee_transaction_id current_address permanent_address');
         if (!kyc) {
             return res.status(200).json({ success: true, status: 'not_submitted', message: 'No KYC submitted yet' });
         }

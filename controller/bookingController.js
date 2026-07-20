@@ -94,6 +94,35 @@ exports.createBooking = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Customer ID is required to create a booking' });
         }
 
+        let payment_installments = [];
+        let initial_payment_status = 'pending';
+
+        if (payment_method === 'installments') {
+            const start = new Date(start_date);
+            const end = new Date(end_date);
+            
+            // Calculate weeks (minimum 1 week)
+            let weeks = Math.ceil((end - start) / (7 * 24 * 60 * 60 * 1000));
+            if (weeks < 1) weeks = 1;
+            
+            // Allow frontend to override weeks with installmentsCount if provided
+            const requestedCount = req.body.installmentsCount ? parseInt(req.body.installmentsCount) : weeks;
+            const finalCount = requestedCount > 0 ? requestedCount : 1;
+
+            const baseAmount = Math.floor(grand_total / finalCount);
+            const remainder = grand_total - (baseAmount * finalCount);
+
+            for (let i = 0; i < finalCount; i++) {
+                const dueDate = new Date(start.getTime() + (i * 7 * 24 * 60 * 60 * 1000));
+                payment_installments.push({
+                    installment_no: i + 1,
+                    amount: i === 0 ? baseAmount + remainder : baseAmount, // Add remainder to first installment
+                    due_date: dueDate,
+                    status: 'pending'
+                });
+            }
+        }
+
         const booking = await Booking.create({
             user: bookingUserId,
             vehicle,
@@ -108,7 +137,9 @@ exports.createBooking = async (req, res) => {
             grand_total,
             pickup_location,
             drop_location,
-            payment_method
+            payment_method,
+            payment_status: initial_payment_status,
+            payment_installments
         });
 
         // Notify Admin

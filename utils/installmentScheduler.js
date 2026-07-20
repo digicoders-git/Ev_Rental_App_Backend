@@ -7,9 +7,17 @@ const { sendNotification } = require('./notificationHelper');
 const formatDate = (date) =>
     new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
-const getMessage = (daysLeft, amount, bookingId, dueDate) => {
+const getMessage = (daysLeft, amount, bookingId, dueDate, lateFee) => {
     const amt = `₹${Number(amount).toLocaleString('en-IN')}`;
     const dateStr = formatDate(dueDate);
+    
+    if (daysLeft < 0) {
+        return {
+            title: '⚠️ OVERDUE Payment Alert',
+            body: `Your installment of ${amt} (incl. ₹${lateFee || 0} late fee) for booking #${bookingId} is OVERDUE since ${dateStr}. Please pay immediately.`,
+        };
+    }
+    
     if (daysLeft === 3) return {
         title: '📅 Payment Due in 3 Days',
         body: `Your installment of ${amt} for booking #${bookingId} is due on ${dateStr} (3 days left). Please arrange payment on time.`,
@@ -41,7 +49,7 @@ const runInstallmentNotifications = async (force = false) => {
         const bookings = await Booking.find({
             'payment_installments.status': { $in: ['pending', 'overdue'] },
             booking_status: { $nin: ['completed', 'cancelled'] },
-        }).populate('user', 'name fcm_token');
+        }).populate('user', 'name fcm_token').populate('plan', 'late_fee_per_day');
 
         let sent = 0;
 
@@ -66,14 +74,24 @@ const runInstallmentNotifications = async (force = false) => {
                     bookingModified = true;
                 }
 
-                // Normal mode: trigger exactly 3 days before and 0 days before (on due date)
-                // Force mode: send to ALL pending installments regardless of date
-                if (!force && ![0, 3].includes(daysLeft) && daysLeft >= 0) continue;
+                // Add Late Fee if 1+ day late and no late fee applied yet
+                if (daysLeft <= -1 && (inst.late_fee === undefined || inst.late_fee === 0)) {
+                    const lateFeeAmount = (booking.plan && booking.plan.late_fee_per_day) ? booking.plan.late_fee_per_day : 50;
+                    
+                    inst.late_fee = lateFeeAmount;
+                    inst.amount += lateFeeAmount;
+                    booking.grand_total += lateFeeAmount;
+                    
+                    bookingModified = true;
+                }
 
-                const notifyDays = force ? daysLeft : (daysLeft <= 0 ? 0 : daysLeft);
+                // Send notification if within 3 days or overdue
+                if (!force && daysLeft > 3) continue;
+
+                const notifyDays = force ? daysLeft : daysLeft;
                 const { title, body } = force
                     ? getForceMessage(inst.amount, booking.booking_id, dueDate)
-                    : getMessage(notifyDays <= 0 ? 0 : notifyDays, inst.amount, booking.booking_id, dueDate);
+                    : getMessage(notifyDays, inst.amount, booking.booking_id, dueDate, inst.late_fee);
 
                 if (user.fcm_token) {
                     await sendPushNotification(user.fcm_token, title, body, {
@@ -99,7 +117,7 @@ const runInstallmentNotifications = async (force = false) => {
                 await sendNotification({
                     recipient_role: 'admin',
                     title: `Payment Due Alert (Booking #${booking.booking_id})`,
-                    message: `Customer ${user.name || user.mobile} has a payment of ₹${inst.amount} due ${daysLeft === 0 ? 'TODAY' : `in ${daysLeft} days`}.`,
+                    message: `Customer ${user.name || user.mobile} has a payment of ₹${inst.amount} due ${daysLeft === 0 ? 'TODAY' : daysLeft < 0 ? 'OVERDUE' : `in ${daysLeft} days`}.`,
                     type: 'payment',
                     related_id: booking._id,
                     due_date: inst.due_date,
@@ -123,11 +141,11 @@ const runInstallmentNotifications = async (force = false) => {
     }
 };
 
-// Run every day at 9:00 AM
+// Run every 6 hours
 const startInstallmentScheduler = (io) => {
     if (io) ioInstance = io;
-    cron.schedule('0 9 * * *', () => runInstallmentNotifications(false), { timezone: 'Asia/Kolkata' });
-    console.log('[InstallmentScheduler] Started — runs daily at 9:00 AM IST');
+    cron.schedule('0 */6 * * *', () => runInstallmentNotifications(false), { timezone: 'Asia/Kolkata' });
+    console.log('[InstallmentScheduler] Started — runs every 6 hours');
 };
 
 module.exports = { startInstallmentScheduler, runInstallmentNotifications };

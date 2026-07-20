@@ -112,6 +112,7 @@ const bookingSchema = new mongoose.Schema({
         {
             installment_no: Number,
             amount: { type: Number, required: true },
+            late_fee: { type: Number, default: 0 },
             due_date: { type: Date, required: true },
             paid_date: { type: Date, default: null },
             status: { type: String, enum: ['pending', 'paid', 'overdue'], default: 'pending' },

@@ -49,6 +49,25 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    current_address: {
+        type: String,
+        default: ""
+    },
+    permanent_address: {
+        type: String,
+        default: ""
+    },
+    dob: {
+        type: Date
+    },
+    kyc_fee_paid: {
+        type: Boolean,
+        default: false
+    },
+    kyc_fee_transaction_id: {
+        type: String,
+        default: ""
+    },
     credit_score: {
         type: Number,
         default: 700,

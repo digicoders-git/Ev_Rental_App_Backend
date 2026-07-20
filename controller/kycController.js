@@ -29,7 +29,7 @@ exports.submitKYC = async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        const { name, mobileNumber } = req.body;
+        const { name, mobileNumber, current_address, permanent_address, dob, razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
 
         if (!name || name.trim() === '') {
             return res.status(400).json({ success: false, message: 'Name is required' });
@@ -37,6 +37,22 @@ exports.submitKYC = async (req, res) => {
 
         if (!mobileNumber || !/^\d{10}$/.test(mobileNumber)) {
             return res.status(400).json({ success: false, message: 'Valid 10-digit mobile number is required' });
+        }
+        
+        if (!current_address || !permanent_address || !dob) {
+            return res.status(400).json({ success: false, message: 'Current Address, Permanent Address, and Date of Birth are required' });
+        }
+
+        if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
+            return res.status(400).json({ success: false, message: 'Payment details are required for KYC submission (₹49 fee)' });
+        }
+
+        const expectedSignature = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+                                        .update(razorpay_order_id + "|" + razorpay_payment_id)
+                                        .digest('hex');
+                                        
+        if (expectedSignature !== razorpay_signature) {
+            return res.status(400).json({ success: false, message: 'Invalid payment signature' });
         }
 
         let existingKyc = await KYC.findOne({ user: userId });
@@ -56,9 +72,17 @@ exports.submitKYC = async (req, res) => {
             name, 
             mobileNumber, 
             status: 'pending',
-            registration_fee_paid: true, // Auto-set to true since fee is removed
-            registration_fee_amount: 0
+            registration_fee_paid: true,
+            registration_fee_amount: 49
         };
+
+        // Update User Profile with new details
+        user.current_address = current_address;
+        user.permanent_address = permanent_address;
+        user.dob = new Date(dob);
+        user.kyc_fee_paid = true;
+        user.kyc_fee_transaction_id = razorpay_payment_id;
+        await user.save();
 
         const fileFields = ['aadharFront', 'aadharBack', 'panCard', 'selfie'];
         fileFields.forEach(field => {

@@ -810,50 +810,40 @@ exports.downloadReceipt = async (req, res) => {
         res.setHeader('Content-type', 'application/pdf');
         doc.pipe(res);
 
-        // --- PDF CONTENT DESIGN (TRIS Electric) ---
+        // --- PDF CONTENT DESIGN (Simple & Clean) ---
 
         const pageWidth = doc.page.width;
         const pageHeight = doc.page.height;
 
-        // 1. Wavy Header Background
-        doc.save();
-        doc.fillColor('#18A0A0');
-        doc.moveTo(0, 0)
-           .lineTo(pageWidth, 0)
-           .lineTo(pageWidth, 120)
-           .quadraticCurveTo(pageWidth / 2, 180, 0, 70)
-           .fill();
-        
-        doc.fillColor('#333333');
-        doc.moveTo(0, 0)
-           .lineTo(pageWidth * 0.4, 0)
-           .quadraticCurveTo(pageWidth * 0.3, 100, 0, 50)
-           .fill();
-        doc.restore();
+        // 1. Simple Header Line
+        doc.moveTo(50, 40).lineTo(pageWidth - 50, 40).strokeColor('#333333').lineWidth(2).stroke();
 
-        // 2. INVOICE Title
-        doc.fontSize(45).font('Helvetica-Bold').fillColor('#333333').text('INVOICE', 50, 140);
+        // 2. INVOICE Title & TRIS Electric Branding
+        doc.fontSize(28).font('Helvetica-Bold').fillColor('#333333').text('INVOICE', 50, 60);
+        doc.fontSize(10).font('Helvetica').fillColor('#666666').text('TRIS Electric - EV Rentals', 50, 95);
 
         // 3. Billed To
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#333333').text('Billed to:', 380, 140);
-        doc.fontSize(12).text(booking.user?.name || 'Customer', 380, 155);
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#333333').text('Billed To:', 380, 60);
+        doc.fontSize(12).text(booking.user?.name || 'Customer', 380, 75);
         doc.fontSize(10).font('Helvetica').fillColor('#666666');
-        doc.text(booking.user?.mobile || '', 380, 170);
-        doc.text(booking.user?.email || '', 380, 185);
+        doc.text(booking.user?.mobile || '', 380, 90);
+        doc.text(booking.user?.email || '', 380, 105);
 
         // 4. Invoice Meta Info
+        doc.moveTo(50, 140).lineTo(pageWidth - 50, 140).strokeColor('#EEEEEE').lineWidth(1).stroke();
+        
         doc.fontSize(10).font('Helvetica-Bold').fillColor('#333333');
-        doc.text('INVOICE NO:', 50, 230);
-        doc.font('Helvetica').fillColor('#666666').text(booking.booking_id, 120, 230);
+        doc.text('INVOICE NO:', 50, 160);
+        doc.font('Helvetica').fillColor('#666666').text(booking.booking_id, 120, 160);
 
-        doc.font('Helvetica-Bold').fillColor('#333333').text('DATE:', 220, 230);
-        doc.font('Helvetica').fillColor('#666666').text(new Date().toLocaleDateString(), 260, 230);
+        doc.font('Helvetica-Bold').fillColor('#333333').text('DATE:', 220, 160);
+        doc.font('Helvetica').fillColor('#666666').text(new Date().toLocaleDateString(), 260, 160);
 
-        doc.font('Helvetica-Bold').fillColor('#333333').text('DUE DATE:', 380, 230);
-        doc.font('Helvetica').fillColor('#666666').text(new Date(booking.end_date).toLocaleDateString(), 440, 230);
+        doc.font('Helvetica-Bold').fillColor('#333333').text('DUE DATE:', 380, 160);
+        doc.font('Helvetica').fillColor('#666666').text(new Date(booking.end_date).toLocaleDateString(), 440, 160);
 
         // 5. Service Table Header
-        const tableTop = 280;
+        const tableTop = 200;
         doc.rect(50, tableTop, pageWidth - 100, 35).fill('#333333');
         
         doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(11);

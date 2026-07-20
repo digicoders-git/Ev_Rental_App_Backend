@@ -806,6 +806,21 @@ exports.downloadReceipt = async (req, res) => {
         const doc = new PDFDocument({ margin: 0, size: 'A4' });
         let filename = `Invoice_${booking.booking_id}.pdf`;
 
+        // Add Watermark
+        try {
+            const watermarkPath = 'd:/Desktop/evRental/evRental/evbusiness/assets/app_icon.png';
+            if (fs.existsSync(watermarkPath)) {
+                doc.save();
+                doc.opacity(0.1);
+                const imgWidth = 350;
+                doc.image(watermarkPath, (doc.page.width - imgWidth) / 2, (doc.page.height - imgWidth) / 2, { width: imgWidth });
+                doc.opacity(1);
+                doc.restore();
+            }
+        } catch (error) {
+            // Ignore if watermark fails to load
+        }
+
         res.setHeader('Content-disposition', `attachment; filename=${filename}`);
         res.setHeader('Content-type', 'application/pdf');
         doc.pipe(res);
@@ -909,28 +924,6 @@ exports.downloadReceipt = async (req, res) => {
         currentY += 20;
         doc.font('Helvetica-Bold').fillColor('#333333').text('Note: ', 50, currentY, { continued: true })
            .font('Helvetica').fillColor('#666666').text('Thank you for choosing TRIS Electric!');
-
-        // 9. TRIS Electric Branding Footer
-        const footerY = pageHeight - 80;
-        
-        // Try to load logo
-        try {
-            const logoPath = path.join(__dirname, '../uploads/logo.png');
-            if (fs.existsSync(logoPath)) {
-                doc.image(logoPath, 50, footerY - 15, { width: 40 });
-            }
-        } catch (error) {
-            // Ignore if logo not found
-        }
-
-        doc.fontSize(12).font('Helvetica-Bold').fillColor('#333333').text('TRIS Electric', 100, footerY);
-        doc.fontSize(9).font('Helvetica').fillColor('#666666').text('EV RENTALS', 100, footerY + 12);
-        doc.text('GSTIN: 09DTTPS1540G1Z7', 100, footerY + 24);
-
-        doc.text('support@tristechnology.com', 300, footerY);
-
-        doc.text('123 Green Avenue', 450, footerY);
-        doc.text('Eco City, EC 12345', 450, footerY + 15);
 
         // Finalize PDF
         doc.end();

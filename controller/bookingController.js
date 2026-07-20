@@ -806,6 +806,10 @@ exports.downloadReceipt = async (req, res) => {
         const doc = new PDFDocument({ margin: 0, size: 'A4' });
         let filename = `Invoice_${booking.booking_id}.pdf`;
 
+        res.setHeader('Content-disposition', `attachment; filename=${filename}`);
+        res.setHeader('Content-type', 'application/pdf');
+        doc.pipe(res);
+
         // Add Watermark
         try {
             const watermarkPath = 'd:/Desktop/evRental/evRental/evbusiness/assets/app_icon.png';
@@ -820,10 +824,6 @@ exports.downloadReceipt = async (req, res) => {
         } catch (error) {
             // Ignore if watermark fails to load
         }
-
-        res.setHeader('Content-disposition', `attachment; filename=${filename}`);
-        res.setHeader('Content-type', 'application/pdf');
-        doc.pipe(res);
 
         // --- PDF CONTENT DESIGN (Simple & Clean) ---
 

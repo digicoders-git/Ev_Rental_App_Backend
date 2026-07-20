@@ -1584,3 +1584,197 @@ exports.rejectVehicleSubmission = async (req, res) => {
     }
 };
 
+// @desc    Initiate online payment for a specific installment
+// @route   POST /api/bookings/:id/installments/:instId/initiate-online
+// @access  Private/User
+exports.initiateInstallmentOnline = async (req, res) => {
+    try {
+        const bookingId = req.params.id;
+        const instId = req.params.instId;
+        const userId = req.user.id;
+
+        const booking = await Booking.findById(bookingId).populate('vehicle');
+        if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+        if (booking.user.toString() !== userId) {
+            return res.status(403).json({ success: false, message: 'Not authorized' });
+        }
+
+        const inst = booking.payment_installments.id(instId);
+        if (!inst) return res.status(404).json({ success: false, message: 'Installment not found' });
+        
+        if (inst.status === 'paid') {
+            return res.status(400).json({ success: false, message: 'Installment already paid' });
+        }
+
+        // Amount includes late fee if any
+        const amountToPay = inst.amount + (inst.late_fee || 0);
+        const amountInPaise = Math.round(amountToPay * 100);
+
+        let rzpKeyId = process.env.RAZORPAY_KEY_ID;
+        let rzpKeySecret = process.env.RAZORPAY_KEY_SECRET;
+        let paymentGatewayUsed = 'platform';
+        let rzpOptionsExtras = {};
+
+        const vehicleData = booking.vehicle;
+        if (vehicleData && vehicleData.franchise) {
+            const FranchiseStore = require('../models/franchiseStoreModel');
+            const franchiseData = await FranchiseStore.findById(vehicleData.franchise);
+
+            if (franchiseData) {
+                const GlobalSetting = require('../models/globalSettingModel');
+                const globalSettingObj = await GlobalSetting.findOne({ key: 'global_payment_mode' });
+                const globalPaymentMode = globalSettingObj ? globalSettingObj.value : 'central';
+
+                if (globalPaymentMode === 'direct' && franchiseData.razorpay_key_id && franchiseData.razorpay_key_secret) {
+                    rzpKeyId = franchiseData.razorpay_key_id;
+                    rzpKeySecret = franchiseData.razorpay_key_secret;
+                    paymentGatewayUsed = 'direct';
+                } else if (globalPaymentMode === 'central' && franchiseData.razorpay_linked_account_id) {
+                    const franchiseShare = Math.round(amountInPaise * ((franchiseData.franchise_share_percentage || 80) / 100));
+                    rzpOptionsExtras = {
+                        transfers: [
+                            {
+                                account: franchiseData.razorpay_linked_account_id,
+                                amount: franchiseShare,
+                                currency: 'INR',
+                                notes: {
+                                    booking_id: booking._id.toString(),
+                                    installment_id: instId.toString()
+                                },
+                                linked_account_notes: ["booking_id", "installment_id"]
+                            }
+                        ]
+                    };
+                }
+            }
+        }
+
+        const razorpay = new Razorpay({
+            key_id: rzpKeyId,
+            key_secret: rzpKeySecret
+        });
+
+        const options = {
+            amount: amountInPaise,
+            currency: 'INR',
+            receipt: instId.toString(),
+            ...rzpOptionsExtras
+        };
+
+        let order;
+        try {
+            order = await razorpay.orders.create(options);
+        } catch (rzpErr) {
+            if (options.transfers) {
+                console.warn("Razorpay Route failed for installment. Falling back to standard payment.");
+                delete options.transfers;
+                order = await razorpay.orders.create(options);
+            } else {
+                throw rzpErr;
+            }
+        }
+
+        // Save order details to installment
+        // Note: we can reuse transaction_id to temporarily store order.id before it's paid
+        // or just let the frontend pass it back. Let's just store it in transaction_id for now
+        inst.transaction_id = order.id;
+        await booking.save();
+
+        res.status(200).json({
+            success: true,
+            razorpay_order_id: order.id,
+            razorpay_key: rzpKeyId,
+            amount_in_paise: amountInPaise
+        });
+    } catch (error) {
+        console.error("DEBUG INSTALLMENT INITIATE ERROR:", error);
+        let errorMsg = error.message;
+        if (error.error && error.error.description) {
+            errorMsg = error.error.description;
+        }
+        res.status(500).json({ success: false, message: errorMsg });
+    }
+};
+
+// @desc    Verify online payment for a specific installment
+// @route   POST /api/bookings/:id/installments/:instId/verify-online
+// @access  Private/User
+exports.verifyInstallmentOnline = async (req, res) => {
+    try {
+        const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
+        const bookingId = req.params.id;
+        const instId = req.params.instId;
+
+        const booking = await Booking.findById(bookingId).populate('vehicle');
+        if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+        const inst = booking.payment_installments.id(instId);
+        if (!inst) return res.status(404).json({ success: false, message: 'Installment not found' });
+
+        if (inst.status === 'paid') {
+            return res.status(400).json({ success: false, message: 'Installment already paid' });
+        }
+
+        let rzpKeySecret = process.env.RAZORPAY_KEY_SECRET;
+
+        // Figure out if direct payment gateway was used
+        if (booking.vehicle && booking.vehicle.franchise) {
+            const FranchiseStore = require('../models/franchiseStoreModel');
+            const franchiseData = await FranchiseStore.findById(booking.vehicle.franchise);
+            if (franchiseData && franchiseData.razorpay_key_secret) {
+                const GlobalSetting = require('../models/globalSettingModel');
+                const globalSettingObj = await GlobalSetting.findOne({ key: 'global_payment_mode' });
+                if (globalSettingObj && globalSettingObj.value === 'direct') {
+                    rzpKeySecret = franchiseData.razorpay_key_secret;
+                }
+            }
+        }
+
+        const crypto = require('crypto');
+        const body = razorpay_order_id + "|" + razorpay_payment_id;
+        const expectedSignature = crypto.createHmac('sha256', rzpKeySecret).update(body.toString()).digest('hex');
+
+        if (expectedSignature !== razorpay_signature) {
+            return res.status(400).json({ success: false, message: 'Invalid payment signature' });
+        }
+
+        // Amount includes late fee if any
+        const amountPaid = inst.amount + (inst.late_fee || 0);
+
+        // Mark as paid
+        inst.status = 'paid';
+        inst.paid_date = new Date();
+        inst.payment_method = 'online';
+        inst.transaction_id = razorpay_payment_id;
+
+        booking.total_paid += amountPaid;
+        
+        if (booking.total_paid >= booking.grand_total) {
+            booking.payment_status = 'paid';
+        } else if (booking.total_paid > 0) {
+            booking.payment_status = 'partially_paid';
+        }
+
+        // Recalculate overdue statuses
+        const now = new Date();
+        booking.payment_installments.forEach(i => {
+            if (i.status === 'pending' && new Date(i.due_date) < now) i.status = 'overdue';
+        });
+
+        await booking.save();
+
+        const { creditFranchiseWallet } = require('../utils/franchiseWalletHelper');
+        await creditFranchiseWallet(booking._id, amountPaid);
+
+        res.status(200).json({
+            success: true,
+            message: `Payment successful for Installment #${inst.installment_no}`,
+            data: booking.payment_installments
+        });
+
+    } catch (error) {
+        console.error("DEBUG INSTALLMENT VERIFY ERROR:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

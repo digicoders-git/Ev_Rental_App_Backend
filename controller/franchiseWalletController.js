@@ -19,10 +19,28 @@ exports.getWalletDetails = async (req, res) => {
             .populate('booking', 'booking_id')
             .sort({ createdAt: -1 });
 
+        // Calculate metrics
+
+
+        const withdrawnResult = await FranchiseWithdrawal.aggregate([
+            { $match: { franchise: franchise._id, status: 'approved' } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const totalWithdrawn = withdrawnResult.length > 0 ? withdrawnResult[0].total : 0;
+
+        const pendingResult = await FranchiseWithdrawal.aggregate([
+            { $match: { franchise: franchise._id, status: 'pending' } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const pendingWithdrawn = pendingResult.length > 0 ? pendingResult[0].total : 0;
+
         res.status(200).json({
             success: true,
             data: {
                 balance: franchise.wallet_balance || 0,
+                totalRevenue: (franchise.wallet_balance || 0) + totalWithdrawn + pendingWithdrawn,
+                totalWithdrawn,
+                pendingWithdrawn,
                 transactions
             }
         });
@@ -49,6 +67,17 @@ exports.requestWithdrawal = async (req, res) => {
         const withdrawal = await FranchiseWithdrawal.create({
             franchise: franchiseId,
             amount
+        });
+
+        // Deduct from wallet balance immediately
+        franchise.wallet_balance -= amount;
+        await franchise.save();
+
+        await FranchiseWalletTransaction.create({
+            franchise: franchiseId,
+            amount: amount,
+            type: 'debit',
+            description: `Withdrawal Requested (${withdrawal.withdrawal_id})`
         });
 
         const admins = await User.find({ role: 'admin' });
@@ -116,21 +145,28 @@ exports.approveWithdrawal = async (req, res) => {
 
         const franchise = await FranchiseStore.findById(withdrawal.franchise);
         
-        if (franchise.wallet_balance < withdrawal.amount) {
-            return res.status(400).json({ success: false, message: 'Franchise does not have enough balance' });
-        }
-
-        // Deduct from wallet
-        franchise.wallet_balance -= withdrawal.amount;
-        await franchise.save();
-
-        // Add debit transaction
-        await FranchiseWalletTransaction.create({
+        const existingTxn = await FranchiseWalletTransaction.findOne({
             franchise: franchise._id,
-            amount: withdrawal.amount,
-            type: 'debit',
-            description: `Withdrawal Approved (${withdrawal.withdrawal_id})`
+            description: `Withdrawal Requested (${withdrawal.withdrawal_id})`
         });
+
+        if (!existingTxn) {
+            // Backward compatibility for old pending requests
+            if (franchise.wallet_balance < withdrawal.amount) {
+                return res.status(400).json({ success: false, message: 'Franchise does not have enough balance' });
+            }
+            // Deduct from wallet
+            franchise.wallet_balance -= withdrawal.amount;
+            await franchise.save();
+
+            // Add debit transaction
+            await FranchiseWalletTransaction.create({
+                franchise: franchise._id,
+                amount: withdrawal.amount,
+                type: 'debit',
+                description: `Withdrawal Approved (${withdrawal.withdrawal_id})`
+            });
+        }
 
         // Update request status
         withdrawal.status = 'approved';
@@ -176,6 +212,26 @@ exports.rejectWithdrawal = async (req, res) => {
         await withdrawal.save();
 
         const franchise = await FranchiseStore.findById(withdrawal.franchise);
+
+        // Refund if it was deducted on request
+        if (franchise) {
+            const existingTxn = await FranchiseWalletTransaction.findOne({
+                franchise: franchise._id,
+                description: `Withdrawal Requested (${withdrawal.withdrawal_id})`
+            });
+
+            if (existingTxn) {
+                franchise.wallet_balance += withdrawal.amount;
+                await franchise.save();
+
+                await FranchiseWalletTransaction.create({
+                    franchise: franchise._id,
+                    amount: withdrawal.amount,
+                    type: 'credit',
+                    description: `Withdrawal Rejected Refund (${withdrawal.withdrawal_id})`
+                });
+            }
+        }
         if (franchise) {
             await sendNotification({
                 recipient: franchise._id,

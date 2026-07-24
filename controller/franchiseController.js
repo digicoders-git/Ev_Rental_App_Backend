@@ -2,6 +2,8 @@ const FranchiseEnquiry = require('../models/franchiseModel');
 const FranchiseStore = require('../models/franchiseStoreModel');
 const Vehicle = require('../models/vehicleModel');
 const Booking = require('../models/bookingModel');
+const FranchiseWithdrawal = require('../models/franchiseWithdrawalModel');
+const FranchiseWalletTransaction = require('../models/franchiseWalletTransactionModel');
 const jwt = require('jsonwebtoken');
 const cloudinary = require('cloudinary').v2;
 const mongoose = require('mongoose');
@@ -523,6 +525,22 @@ exports.getFranchiseHistory = async (req, res) => {
         const grandTotal = revenueStats.length > 0 ? revenueStats[0].grandTotal : 0;
         const totalLateFee = revenueStats.length > 0 ? revenueStats[0].lateFee : 0;
 
+        // Wallet & Withdrawals
+        const withdrawnResult = await FranchiseWithdrawal.aggregate([
+            { $match: { franchise: new mongoose.Types.ObjectId(storeId), status: 'approved' } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const totalWithdrawn = withdrawnResult.length > 0 ? withdrawnResult[0].total : 0;
+
+        const pendingResult = await FranchiseWithdrawal.aggregate([
+            { $match: { franchise: new mongoose.Types.ObjectId(storeId), status: 'pending' } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const pendingWithdrawn = pendingResult.length > 0 ? pendingResult[0].total : 0;
+
+        // Calculate total earnings directly from balance and withdrawals to avoid mismatch
+        const totalEarnings = (store.wallet_balance || 0) + totalWithdrawn + pendingWithdrawn;
+
         // Fetch list of recent bookings with user/vehicle details
         const recentBookings = await Booking.find({ franchise: storeId, ...dateFilter })
             .populate('user', 'name email mobile')
@@ -554,7 +572,11 @@ exports.getFranchiseHistory = async (req, res) => {
                 revenue: {
                     totalPaid: totalRevenue,
                     grandTotal: grandTotal,
-                    totalLateFee: totalLateFee
+                    totalLateFee: totalLateFee,
+                    totalEarnings: totalEarnings,
+                    totalWithdrawn: totalWithdrawn,
+                    pendingWithdrawn: pendingWithdrawn,
+                    walletBalance: store.wallet_balance || 0
                 }
             }
         });

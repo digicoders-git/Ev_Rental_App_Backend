@@ -142,8 +142,24 @@ const bookingSchema = new mongoose.Schema({
     }
 }, {
     timestamps: true,
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true }
+    toJSON: { 
+        virtuals: true,
+        transform: function(doc, ret) {
+            if (ret.payment_method === 'installments' && ret.payment_status !== 'paid') {
+                ret.payment_status = 'pending';
+            }
+            return ret;
+        }
+    },
+    toObject: { 
+        virtuals: true,
+        transform: function(doc, ret) {
+            if (ret.payment_method === 'installments' && ret.payment_status !== 'paid') {
+                ret.payment_status = 'pending';
+            }
+            return ret;
+        }
+    }
 });
 
 bookingSchema.virtual('due_amount').get(function() {

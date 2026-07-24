@@ -21,23 +21,25 @@ exports.getInvoiceByBooking = async (req, res) => {
             .populate('franchise', 'store_name owner_name mobile email address city state zip_code')
             .sort('createdAt');
 
-        // If no invoices exist AND it's not an installments booking, generate a master invoice
-        if (invoices.length === 0 && booking.payment_method !== 'installments') {
+        // If no invoices exist AND it's either not installments, OR it's an old installments booking with payments made
+        if (invoices.length === 0 && (booking.payment_method !== 'installments' || booking.total_paid > 0)) {
             // Generate unique invoice number
             const count = await Invoice.countDocuments();
             const invNumber = `INV-${new Date().getFullYear()}-${String(count + 1).padStart(5, '0')}`;
 
-            // Create new master invoice
+            const isOldInstallment = booking.payment_method === 'installments';
+
+            // Create new master/fallback invoice
             const newInvoice = await Invoice.create({
                 invoice_number: invNumber,
                 booking: booking._id,
                 user: booking.user,
                 franchise: booking.franchise, // Will be null if Platform
-                amount: booking.total_amount,
-                gst_amount: booking.gst_amount,
-                discount_amount: booking.discount_amount,
-                total_amount: booking.grand_total,
-                status: booking.payment_status === 'paid' ? 'paid' : 'unpaid'
+                amount: isOldInstallment ? booking.total_paid : booking.total_amount,
+                gst_amount: isOldInstallment ? 0 : booking.gst_amount,
+                discount_amount: isOldInstallment ? 0 : booking.discount_amount,
+                total_amount: isOldInstallment ? booking.total_paid : booking.grand_total,
+                status: booking.payment_status === 'paid' ? 'paid' : (isOldInstallment ? 'paid' : 'unpaid')
             });
 
             // Re-fetch with populations

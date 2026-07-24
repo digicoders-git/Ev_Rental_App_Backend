@@ -4,6 +4,7 @@ const Vehicle = require('../models/vehicleModel');
 const RentalPlan = require('../models/planModel');
 const User = require('../models/userModel');
 const WalletTransaction = require('../models/walletTransactionModel');
+const Invoice = require('../models/invoiceModel');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
@@ -1024,6 +1025,10 @@ exports.extendBooking = async (req, res) => {
         booking.total_amount += extraCost;
         booking.grand_total += extraCost;
         
+        if (booking.grand_total > booking.total_paid) {
+            booking.payment_status = booking.total_paid > 0 ? 'partially_paid' : 'pending';
+        }
+        
         await booking.save();
         
         // Notify the user about the plan extension
@@ -1270,6 +1275,23 @@ exports.payInstallment = async (req, res) => {
         await booking.save();
         await creditFranchiseWallet(booking._id, inst.amount);
 
+        // Generate Invoice for this specific installment
+        const count = await Invoice.countDocuments();
+        const invNumber = `INV-${new Date().getFullYear()}-${String(count + 1).padStart(5, '0')}`;
+        await Invoice.create({
+            invoice_number: invNumber,
+            booking: booking._id,
+            user: booking.user,
+            franchise: booking.franchise,
+            installment_id: inst._id,
+            installment_no: inst.installment_no,
+            amount: inst.amount,
+            gst_amount: 0,
+            discount_amount: 0,
+            total_amount: inst.amount,
+            status: 'paid'
+        });
+
         res.status(200).json({
             success: true,
             message: `Installment #${inst.installment_no} of ₹${inst.amount} marked as paid`,
@@ -1405,6 +1427,23 @@ exports.payInstallmentWithWallet = async (req, res) => {
         });
 
         await booking.save();
+
+        // Generate Invoice for this specific installment
+        const count = await Invoice.countDocuments();
+        const invNumber = `INV-${new Date().getFullYear()}-${String(count + 1).padStart(5, '0')}`;
+        await Invoice.create({
+            invoice_number: invNumber,
+            booking: booking._id,
+            user: booking.user,
+            franchise: booking.franchise,
+            installment_id: inst._id,
+            installment_no: inst.installment_no,
+            amount: amountToPay,
+            gst_amount: 0,
+            discount_amount: 0,
+            total_amount: amountToPay,
+            status: 'paid'
+        });
 
         res.status(200).json({
             success: true,

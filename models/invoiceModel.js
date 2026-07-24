@@ -21,6 +21,14 @@ const invoiceSchema = new mongoose.Schema({
         ref: 'FranchiseStore',
         default: null // Null means Platform
     },
+    installment_id: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: null
+    },
+    installment_no: {
+        type: Number,
+        default: null
+    },
     amount: {
         type: Number,
         required: true

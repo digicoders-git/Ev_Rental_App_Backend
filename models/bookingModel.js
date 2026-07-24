@@ -135,6 +135,10 @@ const bookingSchema = new mongoose.Schema({
     is_vehicle_released: {
         type: Boolean,
         default: false
+    },
+    auto_renew: {
+        type: Boolean,
+        default: false
     }
 }, {
     timestamps: true,

@@ -971,7 +971,7 @@ exports.cancelBooking = async (req, res) => {
 // @access  Private
 exports.extendBooking = async (req, res) => {
     try {
-        const { extra_days } = req.body; // Number of days to extend
+        const { extra_days, auto_renew } = req.body; // Number of days to extend
         if (!extra_days || extra_days <= 0) {
             return res.status(400).json({ success: false, message: 'Please provide valid extra_days' });
         }
@@ -985,18 +985,58 @@ exports.extendBooking = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Cannot extend a completed or cancelled booking' });
         }
 
-        // Calculate new end date
-        const currentEnd = new Date(booking.end_date);
-        currentEnd.setDate(currentEnd.getDate() + parseInt(extra_days));
-        
-        // Calculate extra cost
-        const extraCost = (booking.plan.price) * extra_days; 
+        if (auto_renew !== undefined) {
+            booking.auto_renew = auto_renew === true || auto_renew === 'true';
+        }
 
+        const currentEnd = new Date(booking.end_date);
+        
+        // Calculate extra cost properly based on pricing_type
+        let dailyRate = booking.plan.price;
+        if (booking.plan.pricing_type === 'weekly') {
+            dailyRate = booking.plan.price / 7;
+        } else if (booking.plan.pricing_type === 'monthly') {
+            dailyRate = booking.plan.price / 30;
+        } else if (booking.plan.pricing_type === 'hourly') {
+            dailyRate = booking.plan.price * 24;
+        }
+        
+        const extraCost = Math.round(dailyRate * parseInt(extra_days));
+
+        // Add installment if payment_method is installments
+        if (booking.payment_method === 'installments' && booking.payment_installments) {
+            // Find max installment number
+            const maxInstNo = booking.payment_installments.reduce((max, inst) => Math.max(max, inst.installment_no), 0);
+            
+            // New installment due date is the current end date (the start of the extension)
+            const dueDate = new Date(currentEnd);
+            
+            booking.payment_installments.push({
+                installment_no: maxInstNo + 1,
+                amount: extraCost,
+                due_date: dueDate,
+                status: 'pending'
+            });
+        }
+
+        currentEnd.setDate(currentEnd.getDate() + parseInt(extra_days));
         booking.end_date = currentEnd;
         booking.total_amount += extraCost;
         booking.grand_total += extraCost;
         
         await booking.save();
+        
+        // Notify the user about the plan extension
+        if (booking.user) {
+            await sendNotification({
+                recipient: booking.user,
+                recipient_role: 'user',
+                title: '📅 Plan Extended',
+                message: `Your booking #${booking.booking_id} has been extended by ${extra_days} days.`,
+                type: 'booking',
+                related_id: booking._id,
+            });
+        }
 
         res.status(200).json({ 
             success: true, 

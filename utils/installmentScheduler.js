@@ -141,11 +141,72 @@ const runInstallmentNotifications = async (force = false) => {
     }
 };
 
+const autoRenewBookings = async () => {
+    try {
+        const now = new Date();
+        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours from now
+
+        const renewals = await Booking.find({
+            auto_renew: true,
+            booking_status: { $in: ['confirmed', 'ongoing'] },
+            end_date: { $lte: tomorrow, $gt: now }
+        }).populate('plan');
+
+        for (const booking of renewals) {
+            const extraDays = booking.plan.min_duration || 7; // default to 7 if min_duration not available
+            
+            let dailyRate = booking.plan.price;
+            if (booking.plan.pricing_type === 'weekly') dailyRate = booking.plan.price / 7;
+            else if (booking.plan.pricing_type === 'monthly') dailyRate = booking.plan.price / 30;
+            else if (booking.plan.pricing_type === 'hourly') dailyRate = booking.plan.price * 24;
+            
+            const extraCost = Math.round(dailyRate * extraDays);
+            const currentEnd = new Date(booking.end_date);
+
+            if (booking.payment_method === 'installments' && booking.payment_installments) {
+                const maxInstNo = booking.payment_installments.reduce((max, inst) => Math.max(max, inst.installment_no), 0);
+                const dueDate = new Date(currentEnd);
+                
+                booking.payment_installments.push({
+                    installment_no: maxInstNo + 1,
+                    amount: extraCost,
+                    due_date: dueDate,
+                    status: 'pending'
+                });
+            }
+
+            currentEnd.setDate(currentEnd.getDate() + extraDays);
+            booking.end_date = currentEnd;
+            booking.total_amount += extraCost;
+            booking.grand_total += extraCost;
+            
+            await booking.save();
+            console.log(`[AutoRenew] Booking #${booking.booking_id} auto-renewed by ${extraDays} days.`);
+            
+            if (booking.user) {
+                await sendNotification({
+                    recipient: booking.user,
+                    recipient_role: 'user',
+                    title: '♻️ Plan Auto-Renewed',
+                    message: `Your booking #${booking.booking_id} has been automatically renewed for ${extraDays} days.`,
+                    type: 'booking',
+                    related_id: booking._id,
+                });
+            }
+        }
+    } catch (err) {
+        console.error('[AutoRenew] Error:', err.message);
+    }
+};
+
 // Run every 6 hours
 const startInstallmentScheduler = (io) => {
     if (io) ioInstance = io;
-    cron.schedule('0 */6 * * *', () => runInstallmentNotifications(false), { timezone: 'Asia/Kolkata' });
+    cron.schedule('0 */6 * * *', () => {
+        runInstallmentNotifications(false);
+        autoRenewBookings();
+    }, { timezone: 'Asia/Kolkata' });
     console.log('[InstallmentScheduler] Started — runs every 6 hours');
 };
 
-module.exports = { startInstallmentScheduler, runInstallmentNotifications };
+module.exports = { startInstallmentScheduler, runInstallmentNotifications, autoRenewBookings };

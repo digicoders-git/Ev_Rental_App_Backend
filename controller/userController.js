@@ -39,10 +39,23 @@ exports.triggerInstallmentNotifications = async (req, res) => {
 // @access  Private
 exports.getProfile = async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select('-otp -otpExpire');
+        const user = await User.findById(req.user.id).select('-otp -otpExpire').lean();
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
+
+        const KYC = require('../models/kycModel');
+        const kycRecord = await KYC.findOne({ user: req.user.id }).select('status');
+        
+        let kyc_status = 'pending'; // Default
+        if (kycRecord) {
+            kyc_status = kycRecord.status === 'approved' ? 'verified' : kycRecord.status;
+        } else if (user.isKycVerified) {
+            kyc_status = 'verified';
+        }
+
+        user.kyc_status = kyc_status;
+
         res.status(200).json({ success: true, data: user });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

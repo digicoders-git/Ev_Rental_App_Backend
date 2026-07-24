@@ -152,6 +152,33 @@ exports.deductFunds = async (req, res) => {
     }
 };
 
+// @desc    Get user's wallet history (Admin)
+// @route   GET /api/wallet/admin/history/:userId
+// @access  Private/Admin
+exports.getUserWalletHistory = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const user = await User.findById(userId).select('wallet_balance name');
+        
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        const transactions = await WalletTransaction.find({ user: userId }).sort('-createdAt');
+
+        res.status(200).json({
+            success: true,
+            data: {
+                user: user.name,
+                balance: user.wallet_balance,
+                transactions
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // @desc    Create Razorpay Order for Wallet Recharge
 // @route   POST /api/wallet/recharge/create-order
 // @access  Private/User

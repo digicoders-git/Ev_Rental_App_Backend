@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getMyWallet, addFunds, deductFunds, addMyFunds, createWalletRechargeOrder, verifyWalletRechargePayment } = require('../controller/walletController');
+const { getMyWallet, addFunds, deductFunds, addMyFunds, createWalletRechargeOrder, verifyWalletRechargePayment, getUserWalletHistory } = require('../controller/walletController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
 router.get('/balance', protect, getMyWallet);
@@ -10,5 +10,6 @@ router.post('/recharge/verify', protect, verifyWalletRechargePayment);
 
 router.post('/admin/add', protect, admin, addFunds);
 router.post('/admin/deduct', protect, admin, deductFunds);
+router.get('/admin/history/:userId', protect, admin, getUserWalletHistory);
 
 module.exports = router;

@@ -145,7 +145,12 @@ const bookingSchema = new mongoose.Schema({
     toJSON: { 
         virtuals: true,
         transform: function(doc, ret) {
-            if (ret.payment_method === 'installments' && ret.payment_status !== 'paid') {
+            const gt = Math.round(ret.grand_total || 0);
+            const tp = Math.round(ret.total_paid || 0);
+
+            if (tp >= gt && gt > 0) {
+                ret.payment_status = 'paid';
+            } else if (ret.payment_method === 'installments' && ret.payment_status !== 'paid') {
                 ret.payment_status = 'pending';
             }
             return ret;
@@ -154,7 +159,12 @@ const bookingSchema = new mongoose.Schema({
     toObject: { 
         virtuals: true,
         transform: function(doc, ret) {
-            if (ret.payment_method === 'installments' && ret.payment_status !== 'paid') {
+            const gt = Math.round(ret.grand_total || 0);
+            const tp = Math.round(ret.total_paid || 0);
+
+            if (tp >= gt && gt > 0) {
+                ret.payment_status = 'paid';
+            } else if (ret.payment_method === 'installments' && ret.payment_status !== 'paid') {
                 ret.payment_status = 'pending';
             }
             return ret;

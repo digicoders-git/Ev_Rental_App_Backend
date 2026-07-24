@@ -49,6 +49,20 @@ exports.getInvoiceByBooking = async (req, res) => {
                 .populate('franchise', 'store_name owner_name mobile email address city state zip_code');
             
             invoices = [populatedInvoice];
+        } 
+
+        // Sync existing master invoice if booking amount/status changed (e.g. via extension or damage charges)
+        const masterInvoice = invoices.find(inv => !inv.installment_id);
+        if (masterInvoice) {
+            const currentStatus = booking.payment_status === 'paid' ? 'paid' : 'unpaid';
+            if (masterInvoice.total_amount !== booking.grand_total || masterInvoice.status !== currentStatus) {
+                masterInvoice.amount = booking.total_amount;
+                masterInvoice.gst_amount = booking.gst_amount;
+                masterInvoice.discount_amount = booking.discount_amount;
+                masterInvoice.total_amount = booking.grand_total;
+                masterInvoice.status = currentStatus;
+                await masterInvoice.save();
+            }
         }
 
         // Return array of invoices

@@ -403,3 +403,59 @@ exports.deleteUser = async (req, res) => {
     }
 };
 
+// @desc    Get My Referrals
+// @route   GET /api/user/my-referrals
+// @access  Private
+exports.getMyReferrals = async (req, res) => {
+    try {
+        const referrals = await User.find({ referred_by: req.user._id }).select('name mobile createdAt');
+        
+        const referralData = await Promise.all(referrals.map(async (user) => {
+            const bookingCount = await Booking.countDocuments({ user: user._id });
+            return {
+                _id: user._id,
+                name: user.name,
+                mobile: user.mobile,
+                date: user.createdAt,
+                status: bookingCount > 0 ? 'Scooty Booked ✅' : 'Registered Only ⏳'
+            };
+        }));
+
+        res.status(200).json({ success: true, data: referralData });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Get All Referrals (Admin & Franchise)
+// @route   GET /api/user/admin/referrals
+// @access  Private
+exports.getAllReferrals = async (req, res) => {
+    try {
+        let referrals = await User.find({ referred_by: { $ne: null } })
+            .populate('referred_by', 'name driver_id mobile')
+            .select('name mobile createdAt referred_by');
+            
+        let referralData = await Promise.all(referrals.map(async (user) => {
+            const latestBooking = await Booking.findOne({ user: user._id }).sort({ createdAt: -1 }).populate('franchise');
+            return {
+                _id: user._id,
+                name: user.name,
+                mobile: user.mobile,
+                date: user.createdAt,
+                referrer: user.referred_by,
+                has_booking: !!latestBooking,
+                booking_date: latestBooking ? latestBooking.createdAt : null,
+                franchise_id: latestBooking && latestBooking.franchise ? latestBooking.franchise._id.toString() : null
+            };
+        }));
+
+        if (req.franchise) {
+            referralData = referralData.filter(r => r.franchise_id === req.franchise._id.toString());
+        }
+
+        res.status(200).json({ success: true, data: referralData });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

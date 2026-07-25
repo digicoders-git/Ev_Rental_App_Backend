@@ -337,7 +337,11 @@ exports.getAllBookings = async (req, res) => {
         }
 
         const bookings = await Booking.find(query)
-            .populate('user', 'name mobile')
+            .populate({
+                path: 'user',
+                select: 'name mobile referred_by',
+                populate: { path: 'referred_by', select: 'driver_id' }
+            })
             .populate('vehicle', 'vehicle_name registration_number franchise')
             .populate('franchise', 'store_name')
             .populate('plan', 'plan_name')
@@ -378,7 +382,11 @@ exports.getFranchiseBookings = async (req, res) => {
         // This ensures only bookings made AFTER the vehicle was assigned to this
         // franchise are returned — not historical admin bookings for the same vehicle.
         const bookings = await Booking.find({ franchise: franchiseId })
-            .populate('user', 'name mobile email')
+            .populate({
+                path: 'user',
+                select: 'name mobile email referred_by',
+                populate: { path: 'referred_by', select: 'driver_id' }
+            })
             .populate('vehicle', 'vehicle_name registration_number')
             .populate('plan', 'plan_name')
             .sort('-createdAt');

@@ -294,3 +294,143 @@ exports.uploadFranchiseAgreement = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// @desc    Admin manually releases funds for a franchise
+// @route   POST /api/franchise-enquiry/admin/withdrawals/release
+// @access  Private (Admin)
+exports.releaseFundsAdmin = async (req, res) => {
+    try {
+        const { franchiseId, amount } = req.body;
+        const franchise = await FranchiseStore.findById(franchiseId);
+
+        if (!franchise) return res.status(404).json({ success: false, message: 'Franchise not found' });
+
+        const withdrawAmount = amount ? Number(amount) : franchise.wallet_balance;
+
+        if (withdrawAmount <= 0) {
+            return res.status(400).json({ success: false, message: 'Wallet balance is empty or invalid amount' });
+        }
+
+        if (withdrawAmount > franchise.wallet_balance) {
+            return res.status(400).json({ success: false, message: 'Insufficient wallet balance' });
+        }
+
+        const withdrawal = await FranchiseWithdrawal.create({
+            franchise: franchiseId,
+            amount: withdrawAmount,
+            status: 'processing'
+        });
+
+        // Deduct from wallet balance immediately
+        franchise.wallet_balance -= withdrawAmount;
+        await franchise.save();
+
+        await FranchiseWalletTransaction.create({
+            franchise: franchiseId,
+            amount: withdrawAmount,
+            type: 'debit',
+            description: `Settlement Initiated (${withdrawal.withdrawal_id})`
+        });
+
+        await sendNotification({
+            recipient: franchise._id,
+            recipient_role: 'franchise',
+            title: 'Settlement Initiated',
+            message: `A settlement of ₹${withdrawAmount} has been initiated and is processing.`,
+            type: 'payment',
+            related_id: withdrawal._id
+        });
+
+        res.status(201).json({ success: true, message: 'Funds released successfully', data: withdrawal });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Update Withdrawal Status (Admin)
+// @route   PUT /api/franchise-enquiry/admin/withdrawals/:id/status
+// @access  Private (Admin)
+exports.updateWithdrawalStatusAdmin = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status, admin_note } = req.body;
+        const withdrawal = await FranchiseWithdrawal.findById(id);
+
+        if (!withdrawal) return res.status(404).json({ success: false, message: 'Withdrawal not found' });
+        
+        const validStatuses = ['pending', 'processing', 'released', 'failed', 'approved', 'rejected'];
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({ success: false, message: 'Invalid status' });
+        }
+
+        const oldStatus = withdrawal.status;
+        withdrawal.status = status;
+        withdrawal.admin_note = admin_note || withdrawal.admin_note;
+
+        if (req.file) {
+            withdrawal.payment_proof = `/uploads/${req.file.filename}`;
+        }
+
+        await withdrawal.save();
+
+        const franchise = await FranchiseStore.findById(withdrawal.franchise);
+
+        // Handle refund if moving to a failed/rejected state from a previously deducted state
+        const isFailedState = ['failed', 'rejected'].includes(status);
+        const wasNotFailedState = !['failed', 'rejected'].includes(oldStatus);
+
+        if (isFailedState && wasNotFailedState && franchise) {
+            franchise.wallet_balance += withdrawal.amount;
+            await franchise.save();
+
+            await FranchiseWalletTransaction.create({
+                franchise: franchise._id,
+                amount: withdrawal.amount,
+                type: 'credit',
+                description: `Settlement Failed Refund (${withdrawal.withdrawal_id})`
+            });
+        }
+        
+        // Handle deducting if moving from failed to a valid state
+        if (!isFailedState && !wasNotFailedState && franchise) {
+             if (franchise.wallet_balance >= withdrawal.amount) {
+                 franchise.wallet_balance -= withdrawal.amount;
+                 await franchise.save();
+
+                 await FranchiseWalletTransaction.create({
+                     franchise: franchise._id,
+                     amount: withdrawal.amount,
+                     type: 'debit',
+                     description: `Settlement Re-initiated (${withdrawal.withdrawal_id})`
+                 });
+             } else {
+                 return res.status(400).json({ success: false, message: 'Franchise does not have enough balance to retry this settlement' });
+             }
+        }
+
+        if (franchise) {
+            let title = 'Settlement Status Updated';
+            let message = `Your settlement status for ₹${withdrawal.amount} is now ${status}.`;
+            if (status === 'released' || status === 'approved') {
+                title = 'Payment Released';
+                message = `Your payment of ₹${withdrawal.amount} has been successfully released.`;
+            } else if (status === 'failed' || status === 'rejected') {
+                title = 'Payment Failed';
+                message = `Your payment of ₹${withdrawal.amount} has failed and was refunded to your wallet.`;
+            }
+
+            await sendNotification({
+                recipient: franchise._id,
+                recipient_role: 'franchise',
+                title,
+                message,
+                type: 'payment',
+                related_id: withdrawal._id
+            });
+        }
+
+        res.status(200).json({ success: true, message: 'Withdrawal status updated', data: withdrawal });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

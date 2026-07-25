@@ -12,7 +12,7 @@ const franchiseWithdrawalSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'approved', 'rejected'],
+        enum: ['pending', 'approved', 'rejected', 'processing', 'released', 'failed'],
         default: 'pending'
     },
     payment_proof: {

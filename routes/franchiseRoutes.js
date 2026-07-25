@@ -27,7 +27,9 @@ const {
     approveWithdrawal,
     rejectWithdrawal,
     uploadAgreement,
-    uploadFranchiseAgreement
+    uploadFranchiseAgreement,
+    releaseFundsAdmin,
+    updateWithdrawalStatusAdmin
 } = require('../controller/franchiseWalletController');
 const { protect, admin, franchiseProtect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -67,6 +69,8 @@ router.put('/admin/stores/:id/agreement', protect, admin, upload.single('agreeme
 
 // Admin routes: Withdrawals Management
 router.get('/admin/withdrawals', protect, admin, getAllWithdrawals);
+router.post('/admin/withdrawals/release', protect, admin, releaseFundsAdmin);
+router.put('/admin/withdrawals/:id/status', protect, admin, upload.single('payment_proof'), updateWithdrawalStatusAdmin);
 router.put('/admin/withdrawals/:id/approve', protect, admin, upload.single('payment_proof'), approveWithdrawal);
 router.put('/admin/withdrawals/:id/reject', protect, admin, rejectWithdrawal);
 

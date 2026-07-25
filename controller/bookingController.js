@@ -1633,6 +1633,49 @@ exports.approveVehicleSubmission = async (req, res) => {
 
         await booking.save();
 
+        // ✅ Send Notifications (FCM Push + In-App DB + Socket Realtime)
+        const customer = await User.findById(booking.user);
+        const { sendPushNotification } = require('../utils/fcmHelper');
+        const vehicleName = booking.vehicle?.vehicle_name || 'Electric Scooty';
+        const vehicleReg = booking.vehicle?.registration_number || '';
+        const displayVehicle = vehicleReg ? `${vehicleName} (${vehicleReg})` : vehicleName;
+
+        if (customer && customer.fcm_token) {
+            await sendPushNotification(
+                customer.fcm_token,
+                '🎉 Scooty Return Approved!',
+                `Your return request for ${displayVehicle} has been approved. Your rental ride is now completed!`,
+                {
+                    type: 'return_approved',
+                    booking_id: booking._id.toString(),
+                    return_status: 'approved',
+                    booking_status: 'completed'
+                }
+            ).catch(err => console.log('FCM Error on return approval:', err));
+        }
+
+        await sendNotification({
+            recipient: booking.user,
+            recipient_role: 'user',
+            title: '🎉 Scooty Return Approved!',
+            message: `Your return request for ${displayVehicle} has been approved. Your rental ride is officially completed!`,
+            type: 'booking_return',
+            related_id: booking._id
+        });
+
+        const io = req.app.get('io');
+        if (io) {
+            const userIdStr = (booking.user._id || booking.user).toString();
+            io.to(userIdStr).emit('vehicle_return_approved', {
+                booking_id: booking._id,
+                title: '🎉 Scooty Return Approved!',
+                message: `Your return request for ${displayVehicle} has been approved. Your rental ride is officially completed!`,
+                return_status: 'approved',
+                booking_status: 'completed'
+            });
+            io.emit('admin_data_changed', {});
+        }
+
         res.status(200).json({
             success: true,
             message: 'Vehicle submission approved successfully.',
@@ -1648,7 +1691,7 @@ exports.approveVehicleSubmission = async (req, res) => {
 // @access  Private/Admin
 exports.rejectVehicleSubmission = async (req, res) => {
     try {
-        const booking = await Booking.findById(req.params.id);
+        const booking = await Booking.findById(req.params.id).populate('vehicle');
         if (!booking) {
             return res.status(404).json({ success: false, message: 'Booking not found' });
         }
@@ -1659,6 +1702,47 @@ exports.rejectVehicleSubmission = async (req, res) => {
 
         booking.return_status = 'rejected';
         await booking.save();
+
+        // ✅ Send Notifications (FCM Push + In-App DB + Socket Realtime)
+        const customer = await User.findById(booking.user);
+        const { sendPushNotification } = require('../utils/fcmHelper');
+        const vehicleName = booking.vehicle?.vehicle_name || 'Electric Scooty';
+        const vehicleReg = booking.vehicle?.registration_number || '';
+        const displayVehicle = vehicleReg ? `${vehicleName} (${vehicleReg})` : vehicleName;
+
+        if (customer && customer.fcm_token) {
+            await sendPushNotification(
+                customer.fcm_token,
+                '❌ Scooty Return Rejected',
+                `Your return request for ${displayVehicle} was rejected by Admin/Franchise. Please contact the branch store or support team.`,
+                {
+                    type: 'return_rejected',
+                    booking_id: booking._id.toString(),
+                    return_status: 'rejected'
+                }
+            ).catch(err => console.log('FCM Error on return rejection:', err));
+        }
+
+        await sendNotification({
+            recipient: booking.user,
+            recipient_role: 'user',
+            title: '❌ Scooty Return Rejected',
+            message: `Your return request for ${displayVehicle} was rejected. Please contact your store or support team for verification.`,
+            type: 'booking_return',
+            related_id: booking._id
+        });
+
+        const io = req.app.get('io');
+        if (io) {
+            const userIdStr = (booking.user._id || booking.user).toString();
+            io.to(userIdStr).emit('vehicle_return_rejected', {
+                booking_id: booking._id,
+                title: '❌ Scooty Return Rejected',
+                message: `Your return request for ${displayVehicle} was rejected by Admin/Franchisee. Please check with support.`,
+                return_status: 'rejected'
+            });
+            io.emit('admin_data_changed', {});
+        }
 
         res.status(200).json({
             success: true,

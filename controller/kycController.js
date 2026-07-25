@@ -279,3 +279,104 @@ exports.createFeeOrder = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// @desc    Get KYC for only this franchise's assigned riders
+// @route   GET /api/kyc/franchise/my-riders
+// @access  Private/Franchise
+exports.getFranchiseKYCSubmissions = async (req, res) => {
+    try {
+        const Booking = require('../models/bookingModel');
+        const franchiseId = req.franchise.id;
+
+        // Get all unique user IDs from this franchise's bookings
+        const bookings = await Booking.find({ franchise: franchiseId }).select('user').lean();
+        const userIds = [...new Set(bookings.map(b => b.user?.toString()).filter(Boolean))];
+
+        // Get KYC for those users only
+        const kycList = await KYC.find({ user: { $in: userIds } })
+            .populate('user', 'name mobile email dob kyc_fee_paid kyc_fee_transaction_id current_address permanent_address isKycVerified')
+            .sort('-createdAt');
+
+        res.status(200).json({ success: true, count: kycList.length, data: kycList });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Franchise approves or rejects a rider's KYC
+// @route   PUT /api/kyc/franchise/status/:id
+// @access  Private/Franchise
+exports.franchiseUpdateKYCStatus = async (req, res) => {
+    try {
+        const { status, rejectionReason } = req.body;
+
+        if (!['approved', 'rejected'].includes(status)) {
+            return res.status(400).json({ success: false, message: 'Invalid status value' });
+        }
+
+        const kyc = await KYC.findByIdAndUpdate(
+            req.params.id,
+            { status, rejectionReason: status === 'rejected' ? rejectionReason : '' },
+            { new: true }
+        );
+
+        if (!kyc) {
+            return res.status(404).json({ success: false, message: 'KYC record not found' });
+        }
+
+        const user = await User.findById(kyc.user);
+        if (user) {
+            user.isKycVerified = status === 'approved';
+            if (status === 'approved') {
+                user.credit_score = (user.credit_score || 0) + 50;
+                if (kyc.name) user.name = kyc.name;
+                if (kyc.mobileNumber) user.mobile = kyc.mobileNumber;
+            }
+            await user.save();
+
+            const title = status === 'approved' ? '✅ KYC Approved!' : '❌ KYC Rejected';
+            const message = status === 'approved'
+                ? 'Your KYC has been verified successfully. You can now book vehicles!'
+                : `Your KYC was rejected. Reason: ${rejectionReason || 'Documents not clear'}. Please resubmit.`;
+
+            // Real-time Socket.IO event
+            const io = req.app.get('io');
+            if (io) {
+                io.to(user._id.toString()).emit('kyc_status_update', {
+                    status,
+                    isKycVerified: status === 'approved',
+                    rejectionReason: status === 'rejected' ? (rejectionReason || 'Documents not clear') : null,
+                    message
+                });
+            }
+
+            // FCM push notification
+            if (user.fcm_token) {
+                await sendPushNotification(user.fcm_token, title, message, {
+                    type: 'kyc_status',
+                    kyc_status: status,
+                    is_kyc_verified: String(status === 'approved'),
+                });
+            }
+
+            // In-app notification
+            await sendNotification({
+                recipient: user._id,
+                recipient_role: 'user',
+                title,
+                message,
+                type: 'kyc',
+                related_id: kyc._id,
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `KYC ${status} successfully.`,
+            data: { kyc, isKycVerified: user ? user.isKycVerified : false }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+

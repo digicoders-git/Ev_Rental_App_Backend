@@ -6,7 +6,9 @@ const {
     getAllKYCSubmissions,
     updateKYCStatus,
     getKYCByMobile,
-    createFeeOrder
+    createFeeOrder,
+    getFranchiseKYCSubmissions,
+    franchiseUpdateKYCStatus
 } = require('../controller/kycController');
 const { protect, admin, franchiseProtect, anyProtect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -23,9 +25,14 @@ router.post('/submit', protect, kycUploadFields, submitKYC);
 router.post('/create-fee-order', protect, createFeeOrder);
 router.get('/my-status', protect, getMyKYCStatus);
 
-// Admin routes
+// Admin routes (view-only, no approve/reject — Franchise handles that now)
 router.get('/admin/all', protect, admin, getAllKYCSubmissions);
 router.get('/admin/track/:mobile', protect, admin, getKYCByMobile);
 router.put('/admin/status/:id', protect, admin, updateKYCStatus);
 
+// Franchise routes — scoped to franchise-assigned riders only
+router.get('/franchise/my-riders', franchiseProtect, getFranchiseKYCSubmissions);
+router.put('/franchise/status/:id', franchiseProtect, franchiseUpdateKYCStatus);
+
 module.exports = router;
+

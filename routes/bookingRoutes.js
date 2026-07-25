@@ -29,7 +29,10 @@ const {
     approveVehicleSubmission,
     rejectVehicleSubmission,
     initiateInstallmentOnline,
-    verifyInstallmentOnline
+    verifyInstallmentOnline,
+    payAllInstallmentsWithWallet,
+    initiateAllInstallmentsOnline,
+    verifyAllInstallmentsOnline
 } = require('../controller/bookingController');
 const { protect, admin, franchiseProtect, anyProtect } = require('../middleware/authMiddleware');
 
@@ -65,6 +68,9 @@ router.put('/:id/unassign', anyProtect, unassignVehicle);
 
 // Installment Routes
 router.post('/:id/installments/setup', anyProtect, setupInstallments);
+router.post('/:id/installments/pay-all-wallet', protect, payAllInstallmentsWithWallet);
+router.post('/:id/installments/initiate-all-online', protect, initiateAllInstallmentsOnline);
+router.post('/:id/installments/verify-all-online', protect, verifyAllInstallmentsOnline);
 router.post('/:id/installments/:instId/pay', anyProtect, payInstallment);
 router.post('/:id/installments/:instId/pay-with-wallet', protect, payInstallmentWithWallet);
 router.post('/:id/installments/:instId/initiate-online', protect, initiateInstallmentOnline);

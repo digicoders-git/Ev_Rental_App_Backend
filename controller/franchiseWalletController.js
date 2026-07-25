@@ -288,6 +288,10 @@ exports.uploadFranchiseAgreement = async (req, res) => {
         const franchise = await FranchiseStore.findById(franchiseId);
         if (!franchise) return res.status(404).json({ success: false, message: 'Franchise not found' });
 
+        if (franchise.franchise_agreement_document || franchise.agreement_document || franchise.admin_agreement_document) {
+            return res.status(400).json({ success: false, message: 'Agreement has already been uploaded and cannot be modified or replaced.' });
+        }
+
         if (!req.file) {
             return res.status(400).json({ success: false, message: 'No file uploaded' });
         }

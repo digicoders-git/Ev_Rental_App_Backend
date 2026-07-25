@@ -1436,6 +1436,9 @@ exports.payInstallmentWithWallet = async (req, res) => {
 
         await booking.save();
 
+        const { creditFranchiseWallet } = require('../utils/franchiseWalletHelper');
+        await creditFranchiseWallet(booking._id, amountToPay);
+
         // Generate Invoice for this specific installment
         const count = await Invoice.countDocuments();
         const invNumber = `INV-${new Date().getFullYear()}-${String(count + 1).padStart(5, '0')}`;
@@ -1845,6 +1848,268 @@ exports.verifyInstallmentOnline = async (req, res) => {
 
     } catch (error) {
         console.error("DEBUG INSTALLMENT VERIFY ERROR:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Pay all pending/overdue installments at once using wallet
+// @route   POST /api/bookings/:id/installments/pay-all-wallet
+// @access  Private/User
+exports.payAllInstallmentsWithWallet = async (req, res) => {
+    try {
+        const bookingId = req.params.id;
+        const userId = req.user.id;
+
+        const booking = await Booking.findById(bookingId);
+        if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+        if (booking.user.toString() !== userId) {
+            return res.status(403).json({ success: false, message: 'Not authorized' });
+        }
+
+        const pendingInsts = booking.payment_installments.filter(i => i.status === 'pending' || i.status === 'overdue');
+        if (pendingInsts.length === 0) {
+            return res.status(400).json({ success: false, message: 'No pending dues to clear' });
+        }
+
+        let totalAmountToPay = 0;
+        pendingInsts.forEach(inst => {
+            totalAmountToPay += (inst.amount || 0) + (inst.late_fee || 0);
+        });
+
+        const user = await User.findById(userId);
+        if (user.wallet_balance < totalAmountToPay) {
+            return res.status(400).json({ success: false, message: 'Insufficient wallet balance to clear all dues' });
+        }
+
+        // Deduct from wallet
+        user.wallet_balance -= totalAmountToPay;
+        await user.save();
+
+        // Log transaction
+        await WalletTransaction.create({
+            user: userId,
+            amount: totalAmountToPay,
+            type: 'debit',
+            description: `Clear All Dues (${pendingInsts.length} bills) for Booking #${booking.booking_id || booking._id}`,
+            performed_by: 'user'
+        });
+
+        const now = new Date();
+        pendingInsts.forEach(inst => {
+            inst.status = 'paid';
+            inst.paid_date = now;
+            inst.payment_method = 'wallet';
+        });
+
+        booking.total_paid += totalAmountToPay;
+        booking.payment_method = 'wallet';
+
+        if (booking.total_paid >= booking.grand_total) {
+            booking.payment_status = 'paid';
+        } else if (booking.total_paid > 0) {
+            booking.payment_status = 'partially_paid';
+        }
+
+        await booking.save();
+
+        const { creditFranchiseWallet } = require('../utils/franchiseWalletHelper');
+        await creditFranchiseWallet(booking._id, totalAmountToPay);
+
+        // Generate Invoice for combined dues
+        const count = await Invoice.countDocuments();
+        const invNumber = `INV-${new Date().getFullYear()}-${String(count + 1).padStart(5, '0')}`;
+        await Invoice.create({
+            invoice_number: invNumber,
+            booking: booking._id,
+            user: booking.user,
+            franchise: booking.franchise,
+            amount: totalAmountToPay,
+            gst_amount: 0,
+            discount_amount: 0,
+            total_amount: totalAmountToPay,
+            status: 'paid'
+        });
+
+        res.status(200).json({
+            success: true,
+            message: `All pending dues (₹${totalAmountToPay}) cleared successfully via Wallet!`,
+            data: booking.payment_installments
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Initiate online payment for all pending/overdue installments combined
+// @route   POST /api/bookings/:id/installments/initiate-all-online
+// @access  Private/User
+exports.initiateAllInstallmentsOnline = async (req, res) => {
+    try {
+        const bookingId = req.params.id;
+        const userId = req.user.id;
+
+        const booking = await Booking.findById(bookingId).populate('vehicle');
+        if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+        if (booking.user.toString() !== userId) {
+            return res.status(403).json({ success: false, message: 'Not authorized' });
+        }
+
+        const pendingInsts = booking.payment_installments.filter(i => i.status === 'pending' || i.status === 'overdue');
+        if (pendingInsts.length === 0) {
+            return res.status(400).json({ success: false, message: 'No pending dues to clear' });
+        }
+
+        let totalAmountToPay = 0;
+        pendingInsts.forEach(inst => {
+            totalAmountToPay += (inst.amount || 0) + (inst.late_fee || 0);
+        });
+
+        const amountInPaise = Math.round(totalAmountToPay * 100);
+
+        let rzpKeyId = process.env.RAZORPAY_KEY_ID;
+        let rzpKeySecret = process.env.RAZORPAY_KEY_SECRET;
+        let paymentGatewayUsed = 'platform';
+        let rzpOptionsExtras = {};
+
+        const vehicleData = booking.vehicle;
+        if (vehicleData && vehicleData.franchise) {
+            const FranchiseStore = require('../models/franchiseStoreModel');
+            const franchiseData = await FranchiseStore.findById(vehicleData.franchise);
+
+            if (franchiseData) {
+                const GlobalSetting = require('../models/globalSettingModel');
+                const globalSettingObj = await GlobalSetting.findOne({ key: 'global_payment_mode' });
+                const globalPaymentMode = globalSettingObj ? globalSettingObj.value : 'central';
+
+                if (globalPaymentMode === 'direct' && franchiseData.razorpay_key_id && franchiseData.razorpay_key_secret) {
+                    rzpKeyId = franchiseData.razorpay_key_id;
+                    rzpKeySecret = franchiseData.razorpay_key_secret;
+                    paymentGatewayUsed = 'direct';
+                } else if (globalPaymentMode === 'central' && franchiseData.razorpay_linked_account_id) {
+                    const franchiseShare = Math.round(amountInPaise * ((franchiseData.franchise_share_percentage || 80) / 100));
+                    rzpOptionsExtras = {
+                        transfers: [
+                            {
+                                account: franchiseData.razorpay_linked_account_id,
+                                amount: franchiseShare,
+                                currency: 'INR',
+                                notes: {
+                                    booking_id: booking._id.toString(),
+                                    action: "clear_all_dues"
+                                },
+                                linked_account_notes: ["booking_id", "action"]
+                            }
+                        ]
+                    };
+                }
+            }
+        }
+
+        const Razorpay = require('razorpay');
+        const razorpay = new Razorpay({
+            key_id: rzpKeyId,
+            key_secret: rzpKeySecret
+        });
+
+        const options = {
+            amount: amountInPaise,
+            currency: 'INR',
+            receipt: `all_${booking._id.toString().substring(0, 20)}`,
+            ...rzpOptionsExtras
+        };
+
+        let order;
+        try {
+            order = await razorpay.orders.create(options);
+        } catch (rzpErr) {
+            if (options.transfers) {
+                console.warn("Razorpay Route failed for combined dues. Falling back to standard payment.");
+                delete options.transfers;
+                order = await razorpay.orders.create(options);
+            } else {
+                throw rzpErr;
+            }
+        }
+
+        res.status(200).json({
+            success: true,
+            razorpay_order_id: order.id,
+            razorpay_key: rzpKeyId,
+            amount_in_paise: amountInPaise,
+            total_amount: totalAmountToPay
+        });
+    } catch (error) {
+        console.error("DEBUG INITIATE ALL DUES ERROR:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Verify online payment for all combined pending installments
+// @route   POST /api/bookings/:id/installments/verify-all-online
+// @access  Private/User
+exports.verifyAllInstallmentsOnline = async (req, res) => {
+    try {
+        const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
+        const bookingId = req.params.id;
+
+        const booking = await Booking.findById(bookingId).populate('vehicle');
+        if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+        let rzpKeySecret = process.env.RAZORPAY_KEY_SECRET;
+        if (booking.vehicle && booking.vehicle.franchise) {
+            const FranchiseStore = require('../models/franchiseStoreModel');
+            const franchiseData = await FranchiseStore.findById(booking.vehicle.franchise);
+            if (franchiseData && franchiseData.razorpay_key_secret) {
+                const GlobalSetting = require('../models/globalSettingModel');
+                const globalSettingObj = await GlobalSetting.findOne({ key: 'global_payment_mode' });
+                if (globalSettingObj && globalSettingObj.value === 'direct') {
+                    rzpKeySecret = franchiseData.razorpay_key_secret;
+                }
+            }
+        }
+
+        const crypto = require('crypto');
+        const body = razorpay_order_id + "|" + razorpay_payment_id;
+        const expectedSignature = crypto.createHmac('sha256', rzpKeySecret).update(body.toString()).digest('hex');
+
+        if (expectedSignature !== razorpay_signature) {
+            return res.status(400).json({ success: false, message: 'Invalid payment signature' });
+        }
+
+        const pendingInsts = booking.payment_installments.filter(i => i.status === 'pending' || i.status === 'overdue');
+        let totalAmountPaid = 0;
+
+        const now = new Date();
+        pendingInsts.forEach(inst => {
+            const amountPaid = inst.amount + (inst.late_fee || 0);
+            totalAmountPaid += amountPaid;
+            inst.status = 'paid';
+            inst.paid_date = now;
+            inst.payment_method = 'online';
+            inst.transaction_id = razorpay_payment_id;
+        });
+
+        booking.total_paid += totalAmountPaid;
+        if (booking.total_paid >= booking.grand_total) {
+            booking.payment_status = 'paid';
+        } else if (booking.total_paid > 0) {
+            booking.payment_status = 'partially_paid';
+        }
+
+        await booking.save();
+
+        const { creditFranchiseWallet } = require('../utils/franchiseWalletHelper');
+        await creditFranchiseWallet(booking._id, totalAmountPaid);
+
+        res.status(200).json({
+            success: true,
+            message: `All pending dues (₹${totalAmountPaid}) cleared successfully!`,
+            data: booking.payment_installments
+        });
+    } catch (error) {
+        console.error("DEBUG VERIFY ALL DUES ERROR:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };

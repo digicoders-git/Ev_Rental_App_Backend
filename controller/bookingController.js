@@ -1575,7 +1575,7 @@ exports.requestVehicleSubmission = async (req, res) => {
             }
         }
 
-        if (booking.end_date && !booking.late_submission_paid && !req.body.ignore_late_check) {
+        if (booking.end_date && !booking.late_submission_paid && !(req.body && req.body.ignore_late_check)) {
             const dueDate = new Date(booking.end_date);
             const deadline = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate(), 19, 0, 0);
             const now = new Date();
@@ -2140,7 +2140,7 @@ exports.payLateSubmissionWithWallet = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Not authorized' });
         }
 
-        const amountToPay = Number(req.body.amount) || 0;
+        const amountToPay = Number(req.body && req.body.amount) || 0;
         if (amountToPay <= 0) {
             return res.status(400).json({ success: false, message: 'Invalid extra charge amount' });
         }
@@ -2199,7 +2199,7 @@ exports.initiateLateSubmissionOnline = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Not authorized' });
         }
 
-        const amountToPay = Number(req.body.amount) || 0;
+        const amountToPay = Number(req.body && req.body.amount) || 0;
         if (amountToPay <= 0) {
             return res.status(400).json({ success: false, message: 'Invalid extra charge amount' });
         }
@@ -2283,7 +2283,7 @@ exports.verifyLateSubmissionOnline = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Not authorized' });
         }
 
-        const { razorpay_payment_id, razorpay_order_id, razorpay_signature, amount } = req.body;
+        const { razorpay_payment_id, razorpay_order_id, razorpay_signature, amount } = req.body || {};
         const amountPaid = Number(amount) || 0;
 
         const GlobalSetting = require('../models/globalSettingModel');

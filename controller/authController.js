@@ -119,6 +119,9 @@ exports.directLogin = async (req, res) => {
     try {
         let user = await User.findOne({ mobile });
         if (!user) {
+            if (!name || name.trim() === '') {
+                return res.status(404).json({ success: false, message: 'Account not found. Please register first.' });
+            }
             let referredBy = null;
             if (referralCode) {
                 const parentUser = await User.findOne({ driver_id: referralCode });

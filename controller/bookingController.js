@@ -1566,12 +1566,25 @@ exports.requestVehicleSubmission = async (req, res) => {
         let totalDues = booking.due_amount || 0;
         
         if (booking.payment_installments && booking.payment_installments.length > 0) {
-            const unpaidInst = booking.payment_installments.filter(i => i.status === 'pending' || i.status === 'overdue');
+            const unpaidInst = booking.payment_installments.filter(i => i.status !== 'paid');
             if (unpaidInst.length > 0) {
                 const instSum = unpaidInst.reduce((sum, i) => sum + i.amount, 0);
                 if (instSum > totalDues) {
                     totalDues = instSum; // use highest required payment
                 }
+            }
+        }
+
+        if (booking.end_date && !booking.late_submission_paid && !req.body.ignore_late_check) {
+            const dueDate = new Date(booking.end_date);
+            const deadline = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate(), 19, 0, 0);
+            const now = new Date();
+            if (now > deadline) {
+                return res.status(400).json({
+                    success: false,
+                    is_late_submission: true,
+                    message: 'Vehicle submission deadline (7:00 PM on due date) has passed. An additional 1 day rental charge is applicable.'
+                });
             }
         }
 
@@ -2113,3 +2126,207 @@ exports.verifyAllInstallmentsOnline = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// @desc    Pay late vehicle submission fee via Wallet and submit vehicle
+// @route   POST /api/bookings/:id/late-submission/pay-wallet
+// @access  Private/User
+exports.payLateSubmissionWithWallet = async (req, res) => {
+    try {
+        const booking = await Booking.findById(req.params.id);
+        if (!booking) {
+            return res.status(404).json({ success: false, message: 'Booking not found' });
+        }
+        if (booking.user.toString() !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'Not authorized' });
+        }
+
+        const amountToPay = Number(req.body.amount) || 0;
+        if (amountToPay <= 0) {
+            return res.status(400).json({ success: false, message: 'Invalid extra charge amount' });
+        }
+
+        const User = require('../models/userModel');
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        if (user.wallet_balance < amountToPay) {
+            return res.status(400).json({
+                success: false,
+                message: `Insufficient wallet balance (₹${user.wallet_balance}). Please pay online or recharge wallet.`
+            });
+        }
+
+        user.wallet_balance -= amountToPay;
+        user.wallet_history.push({
+            type: 'debit',
+            amount: amountToPay,
+            description: `Late submission charge (1 Day) for booking ${booking.booking_id || booking._id}`,
+            date: new Date()
+        });
+        await user.save();
+
+        booking.additional_charges = (booking.additional_charges || 0) + amountToPay;
+        booking.return_status = 'submission_pending';
+        booking.late_submission_paid = true;
+        await booking.save();
+
+        const { creditFranchiseWallet } = require('../utils/franchiseWalletHelper');
+        await creditFranchiseWallet(booking._id, amountToPay);
+
+        res.status(200).json({
+            success: true,
+            message: `Paid late submission fee (₹${amountToPay}) and submitted vehicle successfully!`,
+            data: booking
+        });
+    } catch (error) {
+        console.error("DEBUG PAY LATE SUBMISSION WALLET ERROR:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Initiate Razorpay online payment for late vehicle submission fee
+// @route   POST /api/bookings/:id/late-submission/initiate-online
+// @access  Private/User
+exports.initiateLateSubmissionOnline = async (req, res) => {
+    try {
+        const booking = await Booking.findById(req.params.id);
+        if (!booking) {
+            return res.status(404).json({ success: false, message: 'Booking not found' });
+        }
+        if (booking.user.toString() !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'Not authorized' });
+        }
+
+        const amountToPay = Number(req.body.amount) || 0;
+        if (amountToPay <= 0) {
+            return res.status(400).json({ success: false, message: 'Invalid extra charge amount' });
+        }
+
+        const GlobalSetting = require('../models/globalSettingModel');
+        const FranchiseStore = require('../models/franchiseStoreModel');
+
+        const modeSetting = await GlobalSetting.findOne({ key: 'razorpay_routing_mode' });
+        const paymentMode = modeSetting && modeSetting.value === 'central' ? 'platform' : 'direct';
+
+        let rzpKeyId = process.env.RAZORPAY_KEY_ID;
+        let rzpKeySecret = process.env.RAZORPAY_KEY_SECRET;
+        let rzpAccountId = null;
+
+        if (booking.franchise) {
+            const store = await FranchiseStore.findById(booking.franchise);
+            if (store && store.razorpay) {
+                if (paymentMode === 'direct' && store.razorpay.key_id && store.razorpay.key_secret) {
+                    rzpKeyId = store.razorpay.key_id;
+                    rzpKeySecret = store.razorpay.key_secret;
+                } else if (paymentMode === 'platform' && store.razorpay.account_id) {
+                    rzpAccountId = store.razorpay.account_id;
+                }
+            }
+        }
+
+        if (!rzpKeyId || !rzpKeySecret) {
+            return res.status(500).json({ success: false, message: 'Payment gateway configuration missing' });
+        }
+
+        const Razorpay = require('razorpay');
+        const rzp = new Razorpay({ key_id: rzpKeyId, key_secret: rzpKeySecret });
+
+        const amountInPaise = Math.round(amountToPay * 100);
+        const options = {
+            amount: amountInPaise,
+            currency: 'INR',
+            receipt: `late_sub_${Date.now().toString().slice(-8)}`,
+            notes: { booking_id: booking._id.toString(), type: 'late_submission' }
+        };
+
+        if (paymentMode === 'platform' && rzpAccountId) {
+            options.transfers = [
+                {
+                    account: rzpAccountId,
+                    amount: amountInPaise,
+                    currency: "INR",
+                    notes: { branch: booking.franchise ? booking.franchise.toString() : "Franchise" },
+                    on_hold: 0
+                }
+            ];
+        }
+
+        const order = await rzp.orders.create(options);
+
+        res.status(200).json({
+            success: true,
+            data: {
+                order_id: order.id,
+                amount: amountInPaise,
+                currency: 'INR',
+                key: rzpKeyId
+            }
+        });
+    } catch (error) {
+        console.error("DEBUG INITIATE LATE SUBMISSION ONLINE ERROR:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Verify Razorpay payment for late vehicle submission fee and submit vehicle
+// @route   POST /api/bookings/:id/late-submission/verify-online
+// @access  Private/User
+exports.verifyLateSubmissionOnline = async (req, res) => {
+    try {
+        const booking = await Booking.findById(req.params.id);
+        if (!booking) {
+            return res.status(404).json({ success: false, message: 'Booking not found' });
+        }
+        if (booking.user.toString() !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'Not authorized' });
+        }
+
+        const { razorpay_payment_id, razorpay_order_id, razorpay_signature, amount } = req.body;
+        const amountPaid = Number(amount) || 0;
+
+        const GlobalSetting = require('../models/globalSettingModel');
+        const FranchiseStore = require('../models/franchiseStoreModel');
+
+        const modeSetting = await GlobalSetting.findOne({ key: 'razorpay_routing_mode' });
+        const paymentMode = modeSetting && modeSetting.value === 'central' ? 'platform' : 'direct';
+
+        let rzpKeySecret = process.env.RAZORPAY_KEY_SECRET;
+
+        if (booking.franchise) {
+            const store = await FranchiseStore.findById(booking.franchise);
+            if (store && store.razorpay) {
+                if (paymentMode === 'direct' && store.razorpay.key_secret) {
+                    rzpKeySecret = store.razorpay.key_secret;
+                }
+            }
+        }
+
+        const crypto = require('crypto');
+        const body = razorpay_order_id + "|" + razorpay_payment_id;
+        const expectedSignature = crypto.createHmac('sha256', rzpKeySecret).update(body.toString()).digest('hex');
+
+        if (expectedSignature !== razorpay_signature) {
+            return res.status(400).json({ success: false, message: 'Invalid payment signature' });
+        }
+
+        booking.additional_charges = (booking.additional_charges || 0) + amountPaid;
+        booking.return_status = 'submission_pending';
+        booking.late_submission_paid = true;
+        await booking.save();
+
+        const { creditFranchiseWallet } = require('../utils/franchiseWalletHelper');
+        await creditFranchiseWallet(booking._id, amountPaid);
+
+        res.status(200).json({
+            success: true,
+            message: `Paid late submission fee (₹${amountPaid}) and submitted vehicle successfully!`,
+            data: booking
+        });
+    } catch (error) {
+        console.error("DEBUG VERIFY LATE SUBMISSION ONLINE ERROR:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+

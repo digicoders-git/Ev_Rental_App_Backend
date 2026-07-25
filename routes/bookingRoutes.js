@@ -32,7 +32,10 @@ const {
     verifyInstallmentOnline,
     payAllInstallmentsWithWallet,
     initiateAllInstallmentsOnline,
-    verifyAllInstallmentsOnline
+    verifyAllInstallmentsOnline,
+    payLateSubmissionWithWallet,
+    initiateLateSubmissionOnline,
+    verifyLateSubmissionOnline
 } = require('../controller/bookingController');
 const { protect, admin, franchiseProtect, anyProtect } = require('../middleware/authMiddleware');
 
@@ -86,5 +89,10 @@ router.post('/:id/pay-with-wallet', protect, payBookingWithWallet);
 router.post('/:id/submit-vehicle', protect, requestVehicleSubmission);
 router.post('/:id/approve-submission', anyProtect, approveVehicleSubmission);
 router.post('/:id/reject-submission', anyProtect, rejectVehicleSubmission);
+
+// Late Vehicle Submission Payments
+router.post('/:id/late-submission/pay-wallet', protect, payLateSubmissionWithWallet);
+router.post('/:id/late-submission/initiate-online', protect, initiateLateSubmissionOnline);
+router.post('/:id/late-submission/verify-online', protect, verifyLateSubmissionOnline);
 
 module.exports = router;

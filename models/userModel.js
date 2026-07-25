@@ -91,6 +91,10 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: ""
     },
+    notes: {
+        type: String,
+        default: ""
+    },
     fcm_token: {
         type: String,
         default: null
@@ -136,6 +140,14 @@ const userSchema = new mongoose.Schema({
     employeeId: {
         type: String,
         default: ""
+    },
+    isLoggedIn: {
+        type: Boolean,
+        default: false
+    },
+    active_device: {
+        type: String,
+        default: null
     }
 }, {
     timestamps: true

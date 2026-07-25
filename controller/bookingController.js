@@ -384,7 +384,7 @@ exports.getFranchiseBookings = async (req, res) => {
         const bookings = await Booking.find({ franchise: franchiseId })
             .populate({
                 path: 'user',
-                select: 'name mobile email city isKycVerified profile_picture referred_by',
+                select: 'name mobile email city isKycVerified profile_picture referred_by notes status credit_score',
                 populate: { path: 'referred_by', select: 'driver_id' }
             })
             .populate('vehicle', 'vehicle_name registration_number')
@@ -1596,6 +1596,7 @@ exports.requestVehicleSubmission = async (req, res) => {
         }
 
         booking.return_status = 'submission_pending';
+        booking.submission_date = new Date();
         await booking.save();
 
         res.status(200).json({
@@ -1625,6 +1626,9 @@ exports.approveVehicleSubmission = async (req, res) => {
         booking.return_status = 'approved';
         booking.booking_status = 'completed';
         booking.actual_return_date = new Date();
+        if (!booking.submission_date) {
+            booking.submission_date = booking.actual_return_date;
+        }
 
         if (booking.vehicle) {
             const Vehicle = require('../models/vehicleModel');
@@ -2253,6 +2257,7 @@ exports.payLateSubmissionWithWallet = async (req, res) => {
 
         booking.additional_charges = (booking.additional_charges || 0) + amountToPay;
         booking.return_status = 'submission_pending';
+        booking.submission_date = new Date();
         booking.late_submission_paid = true;
         await booking.save();
 
@@ -2397,6 +2402,7 @@ exports.verifyLateSubmissionOnline = async (req, res) => {
 
         booking.additional_charges = (booking.additional_charges || 0) + amountPaid;
         booking.return_status = 'submission_pending';
+        booking.submission_date = new Date();
         booking.late_submission_paid = true;
         await booking.save();
 

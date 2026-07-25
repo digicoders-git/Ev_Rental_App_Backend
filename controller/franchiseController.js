@@ -540,8 +540,11 @@ exports.getFranchiseHistory = async (req, res) => {
 
         // Calculate total earnings directly from balance and withdrawals
         const netEarnings = (store.wallet_balance || 0) + totalWithdrawn + pendingWithdrawn;
-        const totalEarnings = store.total_gross_revenue || (netEarnings > 0 ? netEarnings / 0.92 : 0);
-        const serviceFee = totalEarnings - netEarnings;
+        let totalEarnings = store.total_gross_revenue || 0;
+        if (totalEarnings < netEarnings || totalEarnings === 0) {
+            totalEarnings = netEarnings > 0 ? Number((netEarnings / 0.92).toFixed(2)) : 0;
+        }
+        const serviceFee = Math.max(0, Number((totalEarnings - netEarnings).toFixed(2)));
 
         // Fetch list of recent bookings with user/vehicle details
         const recentBookings = await Booking.find({ franchise: storeId, ...dateFilter })

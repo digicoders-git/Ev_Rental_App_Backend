@@ -291,6 +291,25 @@ exports.getAllUsers = async (req, res) => {
             }
         });
 
+        // Also merge any users from DB to ensure fresh notes and no missing riders
+        const allUsers = await User.find({ role: 'user' }).lean();
+        allUsers.forEach(u => {
+            const userIdStr = u._id.toString();
+            if (!uniqueUsersMap[userIdStr]) {
+                uniqueUsersMap[userIdStr] = {
+                    ...u,
+                    assigned_vehicle: null,
+                    booking_date: u.createdAt,
+                    franchise_name: 'Main Branch',
+                    paid_amount: 0,
+                    due_amount: 0,
+                    next_installment_date: null
+                };
+            } else {
+                uniqueUsersMap[userIdStr].notes = u.notes || "";
+            }
+        });
+
         const usersWithAnyBooking = Object.values(uniqueUsersMap);
         
         res.status(200).json({
@@ -335,7 +354,7 @@ exports.getUserDetail = async (req, res) => {
 // @access  Private/Admin
 exports.updateUserStatus = async (req, res) => {
     try {
-        const { status, role, credit_score, block_reason, name, email, mobile, profile_edited } = req.body;
+        const { status, role, credit_score, block_reason, name, email, mobile, profile_edited, notes } = req.body;
         
         const user = await User.findById(req.params.id);
         if (!user) {
@@ -343,7 +362,7 @@ exports.updateUserStatus = async (req, res) => {
         }
 
         // Prevent self-blocking - Using _id.toString() for both for absolute comparison
-        if (status === 'blocked' && user._id.toString() === req.user._id.toString()) {
+        if (status === 'blocked' && req.user && user._id.toString() === req.user._id.toString()) {
             return res.status(400).json({ success: false, message: 'You cannot block your own account' });
         }
 
@@ -354,6 +373,11 @@ exports.updateUserStatus = async (req, res) => {
         if (email !== undefined) user.email = email;
         if (mobile !== undefined) user.mobile = mobile;
         if (profile_edited !== undefined) user.profile_edited = profile_edited;
+        if (notes !== undefined) user.notes = notes;
+        if (req.body.isLoggedIn !== undefined) {
+            user.isLoggedIn = req.body.isLoggedIn;
+            if (!user.isLoggedIn) user.active_device = null;
+        }
 
         // Handle Block Reason
         if (status === 'blocked') {

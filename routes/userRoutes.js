@@ -31,8 +31,8 @@ router.post('/trigger-installment-notifications', protect, admin, triggerInstall
 router.post('/admin/add-rider', anyProtect, addRider);
 router.get('/admin/all', anyProtect, getAllUsers);
 router.get('/admin/referrals', anyProtect, getAllReferrals);
-router.get('/admin/:id', protect, admin, getUserDetail);
-router.put('/admin/:id', protect, admin, updateUserStatus);
+router.get('/admin/:id', anyProtect, getUserDetail);
+router.put('/admin/:id', anyProtect, updateUserStatus);
 router.delete('/admin/:id', protect, admin, deleteUser);
 
 module.exports = router;

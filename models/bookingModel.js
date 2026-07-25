@@ -100,6 +100,9 @@ const bookingSchema = new mongoose.Schema({
     actual_return_date: {
         type: Date
     },
+    submission_date: {
+        type: Date
+    },
     late_fee: {
         type: Number,
         default: 0

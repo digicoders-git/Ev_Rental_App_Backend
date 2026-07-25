@@ -80,9 +80,32 @@ exports.getAllVehicles = async (req, res) => {
             .populate('category', 'name')
             .sort('-createdAt');
         
+        const allRecentBookings = await Booking.find({ 
+            vehicle: { $exists: true, $ne: null }
+        }).populate('user', 'name mobile').sort('-updatedAt');
+
+        const vehicleBookingMap = {};
+        for (const b of allRecentBookings) {
+            if (b.vehicle && !vehicleBookingMap[b.vehicle.toString()]) {
+                vehicleBookingMap[b.vehicle.toString()] = b;
+            }
+        }
+
         const data = vehicles.map(v => {
             const vObj = v.toObject();
             vObj.is_busy = busyVehicleIds.includes(v._id.toString());
+            const latestBooking = vehicleBookingMap[v._id.toString()];
+            if (latestBooking) {
+                vObj.driver_name = latestBooking.user?.name || 'Rider';
+                vObj.driver_phone = latestBooking.user?.mobile || '';
+                const subDate = latestBooking.submission_date || latestBooking.actual_return_date || (latestBooking.return_status && latestBooking.return_status !== 'none' ? latestBooking.updatedAt : null);
+                vObj.submission_date = subDate ? new Date(subDate).toISOString() : null;
+                vObj.submission_status = latestBooking.return_status === 'submission_pending' ? 'Submitted' : (latestBooking.return_status === 'approved' ? 'Returned' : (vObj.is_busy ? 'On Ride' : 'Available'));
+            } else {
+                vObj.driver_name = '—';
+                vObj.submission_date = null;
+                vObj.submission_status = vObj.is_busy ? 'On Ride' : (vObj.status === 'active' ? 'Available' : vObj.status);
+            }
             return vObj;
         });
 
@@ -244,9 +267,32 @@ exports.getMyFranchiseVehicles = async (req, res) => {
         }).select('vehicle');
         const busyVehicleIds = busyBookings.map(b => b.vehicle ? b.vehicle.toString() : '');
 
+        const allRecentBookings = await Booking.find({ 
+            vehicle: { $exists: true, $ne: null }
+        }).populate('user', 'name mobile').sort('-updatedAt');
+
+        const vehicleBookingMap = {};
+        for (const b of allRecentBookings) {
+            if (b.vehicle && !vehicleBookingMap[b.vehicle.toString()]) {
+                vehicleBookingMap[b.vehicle.toString()] = b;
+            }
+        }
+
         const data = vehicles.map(v => {
             const vObj = v.toObject();
             vObj.is_busy = busyVehicleIds.includes(v._id.toString());
+            const latestBooking = vehicleBookingMap[v._id.toString()];
+            if (latestBooking) {
+                vObj.driver_name = latestBooking.user?.name || 'Rider';
+                vObj.driver_phone = latestBooking.user?.mobile || '';
+                const subDate = latestBooking.submission_date || latestBooking.actual_return_date || (latestBooking.return_status && latestBooking.return_status !== 'none' ? latestBooking.updatedAt : null);
+                vObj.submission_date = subDate ? new Date(subDate).toISOString() : null;
+                vObj.submission_status = latestBooking.return_status === 'submission_pending' ? 'Submitted' : (latestBooking.return_status === 'approved' ? 'Returned' : (vObj.is_busy ? 'On Ride' : 'Available'));
+            } else {
+                vObj.driver_name = '—';
+                vObj.submission_date = null;
+                vObj.submission_status = vObj.is_busy ? 'On Ride' : (vObj.status === 'active' ? 'Available' : vObj.status);
+            }
             return vObj;
         });
         

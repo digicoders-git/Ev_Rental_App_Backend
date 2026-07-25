@@ -35,8 +35,11 @@ exports.getWalletDetails = async (req, res) => {
         const pendingWithdrawn = pendingResult.length > 0 ? pendingResult[0].total : 0;
 
         const netRevenue = (franchise.wallet_balance || 0) + totalWithdrawn + pendingWithdrawn;
-        const totalRevenue = franchise.total_gross_revenue || (netRevenue > 0 ? netRevenue / 0.92 : 0);
-        const serviceFee = totalRevenue - netRevenue;
+        let totalRevenue = franchise.total_gross_revenue || 0;
+        if (totalRevenue < netRevenue || totalRevenue === 0) {
+            totalRevenue = netRevenue > 0 ? Number((netRevenue / 0.92).toFixed(2)) : 0;
+        }
+        const serviceFee = Math.max(0, Number((totalRevenue - netRevenue).toFixed(2)));
 
         res.status(200).json({
             success: true,

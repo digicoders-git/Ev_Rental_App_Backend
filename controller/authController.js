@@ -78,9 +78,17 @@ exports.verifyOTP = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
         }
 
+        if (user.isLoggedIn) {
+            return res.status(403).json({
+                success: false,
+                message: 'This account is already logged in on another device. Please logout from the existing device first.'
+            });
+        }
+
         user.otp = undefined;
         user.otpExpire = undefined;
         user.isVerified = true;
+        user.isLoggedIn = true;
         if (fcm_token) user.fcm_token = fcm_token;
         await user.save();
 
@@ -118,6 +126,13 @@ exports.directLogin = async (req, res) => {
 
     try {
         let user = await User.findOne({ mobile });
+        if (user && user.isLoggedIn) {
+            return res.status(403).json({
+                success: false,
+                message: 'This account is already logged in on another device. Please logout from the existing device first.'
+            });
+        }
+
         if (!user) {
             if (!name || name.trim() === '') {
                 return res.status(404).json({ success: false, message: 'Account not found. Please register first.' });
@@ -130,10 +145,11 @@ exports.directLogin = async (req, res) => {
                 }
                 referredBy = parentUser._id;
             }
-            user = await User.create({ mobile, name: name || "", isVerified: true, referred_by: referredBy });
+            user = await User.create({ mobile, name: name || "", isVerified: true, isLoggedIn: true, referred_by: referredBy });
         } else {
             if (name) user.name = name;
             user.isVerified = true;
+            user.isLoggedIn = true;
         }
 
         if (fcm_token) user.fcm_token = fcm_token;
@@ -240,3 +256,41 @@ exports.adminLogin = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// @desc    Logout User & release device login restriction
+// @route   POST /api/auth/logout
+// @access  Public / Protected
+exports.logout = async (req, res) => {
+    try {
+        const { userId, mobile } = req.body;
+        let idToLogout = userId;
+
+        if (!idToLogout && req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+            try {
+                const token = req.headers.authorization.split(' ')[1];
+                const decoded = jwt.verify(token, process.env.JWT_SECRET);
+                idToLogout = decoded.id;
+            } catch (err) {
+                // Token invalid or expired
+            }
+        }
+
+        let user = null;
+        if (idToLogout) {
+            user = await User.findById(idToLogout);
+        } else if (mobile) {
+            user = await User.findOne({ mobile });
+        }
+
+        if (user) {
+            user.isLoggedIn = false;
+            user.active_device = null;
+            await user.save();
+        }
+
+        res.status(200).json({ success: true, message: 'Logged out successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+

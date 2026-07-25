@@ -15,6 +15,11 @@ const supportSchema = new mongoose.Schema({
         ref: 'FranchiseStore',
         required: false
     },
+    vehicle: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Vehicle',
+        default: null
+    },
     category: {
         type: String,
         required: true

@@ -1867,7 +1867,7 @@ exports.payAllInstallmentsWithWallet = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Not authorized' });
         }
 
-        const pendingInsts = booking.payment_installments.filter(i => i.status === 'pending' || i.status === 'overdue');
+        const pendingInsts = booking.payment_installments.filter(i => i.status !== 'paid');
         if (pendingInsts.length === 0) {
             return res.status(400).json({ success: false, message: 'No pending dues to clear' });
         }
@@ -1956,7 +1956,7 @@ exports.initiateAllInstallmentsOnline = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Not authorized' });
         }
 
-        const pendingInsts = booking.payment_installments.filter(i => i.status === 'pending' || i.status === 'overdue');
+        const pendingInsts = booking.payment_installments.filter(i => i.status !== 'paid');
         if (pendingInsts.length === 0) {
             return res.status(400).json({ success: false, message: 'No pending dues to clear' });
         }
@@ -2078,7 +2078,7 @@ exports.verifyAllInstallmentsOnline = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid payment signature' });
         }
 
-        const pendingInsts = booking.payment_installments.filter(i => i.status === 'pending' || i.status === 'overdue');
+        const pendingInsts = booking.payment_installments.filter(i => i.status !== 'paid');
         let totalAmountPaid = 0;
 
         const now = new Date();

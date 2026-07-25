@@ -12,25 +12,24 @@ exports.creditFranchiseWallet = async (bookingId, amountPaid) => {
 
         if (!franchise) return;
 
-        // If direct or split mode via Razorpay Route is strictly used, we might not want to credit the internal wallet 
-        // to avoid double crediting. But for manual payments, we definitely need to credit.
-        // For simplicity, we assume this internal wallet tracks all manual earnings or platform mode earnings.
-        // As per user request: "sara earning show hona chahiye kux bhi nahi katna hai"
-        // So we give 100% of the payment to the franchise wallet, deductions will be handled manually later.
-        const earnings = amountPaid;
+        // As per user request: "Net Revenue wo amount hoga jo 8% Service Fee deduct karne ke baad bachta hai"
+        const grossEarnings = amountPaid;
+        const serviceFee = grossEarnings * 0.08;
+        const netEarnings = grossEarnings - serviceFee;
 
-        if (earnings <= 0) return;
+        if (grossEarnings <= 0) return;
 
-        // Add to wallet balance
-        franchise.wallet_balance = (franchise.wallet_balance || 0) + earnings;
+        // Add to wallet balance (Net) and total gross revenue
+        franchise.total_gross_revenue = (franchise.total_gross_revenue || 0) + grossEarnings;
+        franchise.wallet_balance = (franchise.wallet_balance || 0) + netEarnings;
         await franchise.save();
 
         // Create transaction record
         await FranchiseWalletTransaction.create({
             franchise: franchiseId,
-            amount: earnings,
+            amount: netEarnings,
             type: 'credit',
-            description: `Earnings from Booking ${booking.booking_id || bookingId} (₹${amountPaid})`,
+            description: `Earnings from Booking ${booking.booking_id || bookingId} (Gross: ₹${grossEarnings}, Fee: 8%, Net: ₹${netEarnings})`,
             booking: bookingId
         });
 

@@ -538,8 +538,10 @@ exports.getFranchiseHistory = async (req, res) => {
         ]);
         const pendingWithdrawn = pendingResult.length > 0 ? pendingResult[0].total : 0;
 
-        // Calculate total earnings directly from balance and withdrawals to avoid mismatch
-        const totalEarnings = (store.wallet_balance || 0) + totalWithdrawn + pendingWithdrawn;
+        // Calculate total earnings directly from balance and withdrawals
+        const netEarnings = (store.wallet_balance || 0) + totalWithdrawn + pendingWithdrawn;
+        const totalEarnings = store.total_gross_revenue || (netEarnings > 0 ? netEarnings / 0.92 : 0);
+        const serviceFee = totalEarnings - netEarnings;
 
         // Fetch list of recent bookings with user/vehicle details
         const recentBookings = await Booking.find({ franchise: storeId, ...dateFilter })
@@ -573,7 +575,9 @@ exports.getFranchiseHistory = async (req, res) => {
                     totalPaid: totalRevenue,
                     grandTotal: grandTotal,
                     totalLateFee: totalLateFee,
-                    totalEarnings: totalEarnings,
+                    totalEarnings: totalEarnings, // Gross
+                    netEarnings: netEarnings, // Net
+                    serviceFee: serviceFee, // Fee
                     totalWithdrawn: totalWithdrawn,
                     pendingWithdrawn: pendingWithdrawn,
                     walletBalance: store.wallet_balance || 0

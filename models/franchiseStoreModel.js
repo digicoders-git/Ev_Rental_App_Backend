@@ -64,6 +64,10 @@ const franchiseStoreSchema = new mongoose.Schema({
         type: Number,
         default: 80
     },
+    total_gross_revenue: {
+        type: Number,
+        default: 0
+    },
     wallet_balance: {
         type: Number,
         default: 0

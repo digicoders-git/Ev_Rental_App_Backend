@@ -74,22 +74,74 @@ exports.getInvoiceByBooking = async (req, res) => {
     }
 };
 
-// @desc    Get all invoices (Filters: Franchise)
+// @desc    Get all invoices for logged-in user (fully dynamic — one per booking)
 // @route   GET /api/invoices
-// @access  Private (Admin, Franchise)
+// @access  Private
 exports.getAllInvoices = async (req, res) => {
     try {
+        // ── User: return one invoice per booking (dynamic) ──
+        if (req.user && req.user.role === 'user') {
+            const bookings = await Booking.find({ user: req.user._id })
+                .populate('vehicle', 'vehicle_name registration_number')
+                .populate('plan', 'plan_name')
+                .sort('-createdAt');
+
+            const results = [];
+
+            for (const booking of bookings) {
+                // Find or create a master invoice for this booking
+                let invoice = await Invoice.findOne({ booking: booking._id, installment_id: null });
+
+                if (!invoice) {
+                    const count = await Invoice.countDocuments();
+                    const invNumber = `INV-${new Date().getFullYear()}-${String(count + 1).padStart(5, '0')}`;
+                    invoice = await Invoice.create({
+                        invoice_number: invNumber,
+                        booking: booking._id,
+                        user: booking.user,
+                        franchise: booking.franchise || null,
+                        amount: booking.payment_method === 'installments' ? booking.total_paid : booking.total_amount,
+                        gst_amount: booking.payment_method === 'installments' ? 0 : (booking.gst_amount || 0),
+                        discount_amount: booking.payment_method === 'installments' ? 0 : (booking.discount_amount || 0),
+                        total_amount: booking.payment_method === 'installments' ? booking.total_paid : booking.grand_total,
+                        status: booking.payment_status === 'paid' ? 'paid' : 'unpaid'
+                    });
+                }
+
+                results.push({
+                    _id: invoice._id,
+                    invoice_number: invoice.invoice_number,
+                    amount: booking.payment_method === 'installments'
+                        ? booking.payment_installments.filter(i => i.status === 'paid').reduce((s, i) => s + Number(i.amount || 0), 0)
+                        : booking.grand_total,
+                    status: invoice.status,
+                    createdAt: invoice.createdAt,
+                    booking: {
+                        _id: booking._id,
+                        booking_id: booking.booking_id,
+                        booking_status: booking.booking_status,
+                        payment_method: booking.payment_method,
+                        grand_total: booking.grand_total,
+                        total_paid: booking.total_paid,
+                        payment_installments: booking.payment_installments,
+                        vehicle: booking.vehicle,
+                        plan: booking.plan,
+                        start_date: booking.start_date,
+                        end_date: booking.end_date
+                    }
+                });
+            }
+
+            return res.status(200).json({ success: true, data: results });
+        }
+
+        // ── Admin / Franchise: return from Invoice collection ──
         let query = {};
-        
-        // If franchise is logged in, restrict to their invoices
         if (req.franchise) {
             query.franchise = req.franchise._id;
         } else if (req.user && req.user.role === 'franchise') {
             query.franchise = req.user.franchiseId;
-        } else if (req.user && req.user.role === 'user') {
-            query.user = req.user._id;
         } else if (req.query.franchiseId) {
-            // If admin filters by franchise
             query.franchise = req.query.franchiseId === 'platform' ? null : req.query.franchiseId;
         }
 

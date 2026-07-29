@@ -100,7 +100,15 @@ exports.getAllVehicles = async (req, res) => {
                 vObj.driver_phone = latestBooking.user?.mobile || '';
                 const subDate = latestBooking.submission_date || latestBooking.actual_return_date || (latestBooking.return_status && latestBooking.return_status !== 'none' ? latestBooking.updatedAt : null);
                 vObj.submission_date = subDate ? new Date(subDate).toISOString() : null;
-                vObj.submission_status = latestBooking.return_status === 'submission_pending' ? 'Submitted' : (latestBooking.return_status === 'approved' ? 'Returned' : (vObj.is_busy ? 'On Ride' : 'Available'));
+                if (latestBooking.return_status === 'submission_pending') {
+                    vObj.submission_status = 'Pending Approval';
+                } else if (latestBooking.return_status === 'approved') {
+                    vObj.submission_status = 'Submitted';
+                } else if (latestBooking.return_status === 'rejected') {
+                    vObj.submission_status = 'Submission Rejected';
+                } else {
+                    vObj.submission_status = vObj.is_busy ? 'On Ride' : 'Available';
+                }
             } else {
                 vObj.driver_name = '—';
                 vObj.submission_date = null;
@@ -287,7 +295,15 @@ exports.getMyFranchiseVehicles = async (req, res) => {
                 vObj.driver_phone = latestBooking.user?.mobile || '';
                 const subDate = latestBooking.submission_date || latestBooking.actual_return_date || (latestBooking.return_status && latestBooking.return_status !== 'none' ? latestBooking.updatedAt : null);
                 vObj.submission_date = subDate ? new Date(subDate).toISOString() : null;
-                vObj.submission_status = latestBooking.return_status === 'submission_pending' ? 'Submitted' : (latestBooking.return_status === 'approved' ? 'Returned' : (vObj.is_busy ? 'On Ride' : 'Available'));
+                if (latestBooking.return_status === 'submission_pending') {
+                    vObj.submission_status = 'Pending Approval';
+                } else if (latestBooking.return_status === 'approved') {
+                    vObj.submission_status = 'Submitted';
+                } else if (latestBooking.return_status === 'rejected') {
+                    vObj.submission_status = 'Submission Rejected';
+                } else {
+                    vObj.submission_status = vObj.is_busy ? 'On Ride' : 'Available';
+                }
             } else {
                 vObj.driver_name = '—';
                 vObj.submission_date = null;

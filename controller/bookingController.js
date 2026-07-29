@@ -84,7 +84,7 @@ exports.createBooking = async (req, res) => {
         // 3. Simple calculation (In a real app, calculate based on days)
         // For now, take amounts from body or use defaults if not provided
         const plan_price_inclusive = req.body.total_amount !== undefined ? req.body.total_amount : planData.price;
-        const security_deposit = req.body.security_deposit !== undefined ? req.body.security_deposit : planData.security_deposit;
+        const security_deposit = req.body.security_deposit !== undefined ? Number(req.body.security_deposit) : 0;
         const discount_amount = req.body.discount_amount || 0;
         
         // Rent includes 5% GST
@@ -94,8 +94,8 @@ exports.createBooking = async (req, res) => {
         const total_amount = base_rent;
         const gst_amount = req.body.gst_amount !== undefined ? req.body.gst_amount : calculated_gst;
         
-        // Since base_rent + calculated_gst = plan_price_inclusive
-        const grand_total = Math.round(total_amount + gst_amount + security_deposit - discount_amount);
+        // grand_total = what Flutter sent as total_amount + security_deposit (only if explicitly passed) - discount
+        const grand_total = Math.round(plan_price_inclusive + security_deposit - discount_amount);
 
         let creatorName = req.user ? (req.user.name || 'User') : 'Franchise/Admin';
 

@@ -95,7 +95,7 @@ exports.getAllInvoices = async (req, res) => {
 
         const invoices = await Invoice.find(query)
             .populate('user', 'name mobile')
-            .populate({ path: 'booking', populate: { path: 'vehicle', select: 'vehicle_name registration_number' } })
+            .populate({ path: 'booking', populate: [{ path: 'vehicle', select: 'vehicle_name registration_number' }, { path: 'plan', select: 'plan_name' }] })
             .populate('franchise', 'store_name')
             .sort('-createdAt');
 

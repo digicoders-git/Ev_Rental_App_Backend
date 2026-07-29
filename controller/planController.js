@@ -17,7 +17,7 @@ exports.createPlan = async (req, res) => {
 // @access  Public
 exports.getAllPlans = async (req, res) => {
     try {
-        const plans = await RentalPlan.find().sort('-createdAt');
+        const plans = await RentalPlan.find({ status: 'active' }).sort('-createdAt');
         const GlobalSetting = require('../models/globalSettingModel');
         const globalLateFeeSetting = await GlobalSetting.findOne({ key: 'late_fee_per_day' });
         const globalLateFee = globalLateFeeSetting ? Number(globalLateFeeSetting.value) : 200;

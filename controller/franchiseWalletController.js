@@ -19,37 +19,33 @@ exports.getWalletDetails = async (req, res) => {
             .populate('booking', 'booking_id')
             .sort({ createdAt: -1 });
 
-        // Calculate metrics
-
-
         const withdrawnResult = await FranchiseWithdrawal.aggregate([
-            { $match: { franchise: franchise._id, status: 'approved' } },
+            { $match: { franchise: franchise._id, status: { $in: ['approved', 'released', 'completed'] } } },
             { $group: { _id: null, total: { $sum: '$amount' } } }
         ]);
         const totalWithdrawn = withdrawnResult.length > 0 ? withdrawnResult[0].total : 0;
 
         const pendingResult = await FranchiseWithdrawal.aggregate([
-            { $match: { franchise: franchise._id, status: 'pending' } },
+            { $match: { franchise: franchise._id, status: { $in: ['pending', 'processing'] } } },
             { $group: { _id: null, total: { $sum: '$amount' } } }
         ]);
         const pendingWithdrawn = pendingResult.length > 0 ? pendingResult[0].total : 0;
 
-        const netRevenue = (franchise.wallet_balance || 0) + totalWithdrawn + pendingWithdrawn;
-        let totalRevenue = franchise.total_gross_revenue || 0;
-        if (totalRevenue < netRevenue || totalRevenue === 0) {
-            totalRevenue = netRevenue > 0 ? Number((netRevenue / 0.92).toFixed(2)) : 0;
-        }
-        const serviceFee = Math.max(0, Number((totalRevenue - netRevenue).toFixed(2)));
+        const SERVICE_FEE_PERCENT = 8;
+        const totalGrossRevenue = Number((franchise.total_gross_revenue || 0).toFixed(2));
+        const serviceFee = Number((totalGrossRevenue * SERVICE_FEE_PERCENT / 100).toFixed(2));
+        const totalNetRevenue = Number((totalGrossRevenue - serviceFee).toFixed(2));
 
         res.status(200).json({
             success: true,
             data: {
-                balance: franchise.wallet_balance || 0,
-                totalRevenue,
-                netRevenue,
+                balance: Number((franchise.wallet_balance || 0).toFixed(2)),
+                totalGrossRevenue,
                 serviceFee,
-                totalWithdrawn,
-                pendingWithdrawn,
+                serviceFeePercent: SERVICE_FEE_PERCENT,
+                totalNetRevenue,
+                totalWithdrawn: Number(totalWithdrawn.toFixed(2)),
+                pendingWithdrawn: Number(pendingWithdrawn.toFixed(2)),
                 transactions
             }
         });

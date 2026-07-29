@@ -2,34 +2,35 @@ const FranchiseStore = require('../models/franchiseStoreModel');
 const FranchiseWalletTransaction = require('../models/franchiseWalletTransactionModel');
 const Booking = require('../models/bookingModel');
 
+const SERVICE_FEE_PERCENT = 8;
+
 exports.creditFranchiseWallet = async (bookingId, amountPaid) => {
     try {
-        const booking = await Booking.findById(bookingId).populate('vehicle');
-        if (!booking || !booking.vehicle || !booking.vehicle.franchise) return;
+        if (!amountPaid || amountPaid <= 0) return;
 
-        const franchiseId = booking.vehicle.franchise;
+        const booking = await Booking.findById(bookingId);
+        if (!booking) return;
+
+        // Use booking.franchise directly (stamped at creation) — more reliable than vehicle.franchise
+        const franchiseId = booking.franchise;
+        if (!franchiseId) return;
+
         const franchise = await FranchiseStore.findById(franchiseId);
-
         if (!franchise) return;
 
-        // As per user request: "Net Revenue wo amount hoga jo 8% Service Fee deduct karne ke baad bachta hai"
-        const grossEarnings = amountPaid;
-        const serviceFee = grossEarnings * 0.08;
-        const netEarnings = grossEarnings - serviceFee;
+        const grossEarnings = Number(amountPaid);
+        const serviceFee = Number((grossEarnings * SERVICE_FEE_PERCENT / 100).toFixed(2));
+        const netEarnings = Number((grossEarnings - serviceFee).toFixed(2));
 
-        if (grossEarnings <= 0) return;
-
-        // Add to wallet balance (Net) and total gross revenue
-        franchise.total_gross_revenue = (franchise.total_gross_revenue || 0) + grossEarnings;
-        franchise.wallet_balance = (franchise.wallet_balance || 0) + netEarnings;
+        franchise.total_gross_revenue = Number(((franchise.total_gross_revenue || 0) + grossEarnings).toFixed(2));
+        franchise.wallet_balance = Number(((franchise.wallet_balance || 0) + netEarnings).toFixed(2));
         await franchise.save();
 
-        // Create transaction record
         await FranchiseWalletTransaction.create({
             franchise: franchiseId,
             amount: netEarnings,
             type: 'credit',
-            description: `Earnings from Booking ${booking.booking_id || bookingId} (Gross: ₹${grossEarnings}, Fee: 8%, Net: ₹${netEarnings})`,
+            description: `Booking ${booking.booking_id || bookingId} | Gross: ₹${grossEarnings} | Service Fee (${SERVICE_FEE_PERCENT}%): ₹${serviceFee} | Net: ₹${netEarnings}`,
             booking: bookingId
         });
 

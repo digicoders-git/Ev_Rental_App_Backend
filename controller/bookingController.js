@@ -437,7 +437,8 @@ exports.getBookingById = async (req, res) => {
     try {
         const booking = await Booking.findById(req.params.id)
             .populate('user', 'name mobile email')
-            .populate('vehicle')
+            .populate('vehicle', 'vehicle_name registration_number thumbnail_image brand')
+            .populate('franchise', 'store_name address city')
             .populate('plan');
 
         if (!booking) {

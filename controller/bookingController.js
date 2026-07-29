@@ -811,132 +811,117 @@ exports.downloadReceipt = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Booking not found' });
         }
 
-        // Create PDF Document (A4 size is default)
         const doc = new PDFDocument({ margin: 0, size: 'A4' });
-        let filename = `Invoice_${booking.booking_id}.pdf`;
-
-        res.setHeader('Content-disposition', `attachment; filename=${filename}`);
+        res.setHeader('Content-disposition', 'attachment; filename=Invoice_' + booking.booking_id + '.pdf');
         res.setHeader('Content-type', 'application/pdf');
         doc.pipe(res);
 
-        // Add Watermark
         try {
             const watermarkPath = 'd:/Desktop/evRental/evRental/evbusiness/assets/app_icon.png';
             if (fs.existsSync(watermarkPath)) {
                 doc.save();
                 doc.opacity(0.1);
-                const imgWidth = 350;
-                doc.image(watermarkPath, (doc.page.width - imgWidth) / 2, (doc.page.height - imgWidth) / 2, { width: imgWidth });
+                doc.image(watermarkPath, (doc.page.width - 350) / 2, (doc.page.height - 350) / 2, { width: 350 });
                 doc.opacity(1);
                 doc.restore();
             }
-        } catch (error) {
-            // Ignore if watermark fails to load
-        }
-
-        // --- PDF CONTENT DESIGN (Simple & Clean) ---
+        } catch (_) {}
 
         const pageWidth = doc.page.width;
         const pageHeight = doc.page.height;
+        const isInstallment = booking.payment_method === 'installments';
+        const allInstallments = isInstallment ? (booking.payment_installments || []) : [];
+        const paidInstallments = allInstallments.filter(i => i.status === 'paid');
+        const pendingInstallments = allInstallments.filter(i => i.status !== 'paid');
 
-        // 1. Simple Header Line
+        // Header
         doc.moveTo(50, 40).lineTo(pageWidth - 50, 40).strokeColor('#333333').lineWidth(2).stroke();
-
-        // 2. INVOICE Title & TRIS Electric Branding
         doc.fontSize(28).font('Helvetica-Bold').fillColor('#333333').text('INVOICE', 50, 60);
         doc.fontSize(10).font('Helvetica').fillColor('#666666').text('TRIS Electric - EV Rentals', 50, 95);
 
-        // 3. Billed To
+        // Billed To
         doc.fontSize(10).font('Helvetica-Bold').fillColor('#333333').text('Billed To:', 380, 60);
-        doc.fontSize(12).text(booking.user?.name || 'Customer', 380, 75);
+        doc.fontSize(12).text((booking.user && booking.user.name) ? booking.user.name : 'Customer', 380, 75);
         doc.fontSize(10).font('Helvetica').fillColor('#666666');
-        doc.text(booking.user?.mobile || '', 380, 90);
-        doc.text(booking.user?.email || '', 380, 105);
+        doc.text((booking.user && booking.user.mobile) ? booking.user.mobile : '', 380, 90);
+        doc.text((booking.user && booking.user.email) ? booking.user.email : '', 380, 105);
 
-        // 4. Invoice Meta Info
+        // Meta
         doc.moveTo(50, 140).lineTo(pageWidth - 50, 140).strokeColor('#EEEEEE').lineWidth(1).stroke();
-        
         doc.fontSize(10).font('Helvetica-Bold').fillColor('#333333');
-        doc.text('INVOICE NO:', 50, 160);
-        doc.font('Helvetica').fillColor('#666666').text(booking.booking_id, 120, 160);
-
+        doc.text('BOOKING ID:', 50, 160);
+        doc.font('Helvetica').fillColor('#666666').text(booking.booking_id, 130, 160);
         doc.font('Helvetica-Bold').fillColor('#333333').text('DATE:', 220, 160);
         doc.font('Helvetica').fillColor('#666666').text(new Date().toLocaleDateString(), 260, 160);
+        doc.font('Helvetica-Bold').fillColor('#333333').text('TYPE:', 380, 160);
+        doc.font('Helvetica').fillColor('#666666').text(isInstallment ? 'Installment Plan' : (booking.payment_method || 'Online'), 420, 160);
 
-        doc.font('Helvetica-Bold').fillColor('#333333').text('DUE DATE:', 380, 160);
-        doc.font('Helvetica').fillColor('#666666').text(new Date(booking.end_date).toLocaleDateString(), 440, 160);
-
-        // 5. Service Table Header
+        // Table Header
         const tableTop = 200;
         doc.rect(50, tableTop, pageWidth - 100, 35).fill('#333333');
-        
         doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(11);
-        doc.text('SERVICE', 70, tableTop + 12);
-        doc.text('QTY', 320, tableTop + 12);
-        doc.text('PRICE', 400, tableTop + 12);
-        doc.text('TOTAL', 480, tableTop + 12, { width: 60, align: 'right' });
+        doc.text('DESCRIPTION', 70, tableTop + 12);
+        doc.text('DUE DATE', 280, tableTop + 12);
+        doc.text('PAID DATE', 380, tableTop + 12);
+        doc.text('AMOUNT', 480, tableTop + 12, { width: 60, align: 'right' });
 
-        // 6. Service Line Items
         let currentY = tableTop + 55;
-        doc.font('Helvetica').fillColor('#666666').fontSize(11);
 
-        const drawRow = (service, qty, price, total) => {
-            doc.text(service, 70, currentY);
-            doc.text(qty.toString(), 320, currentY);
-            doc.text(`INR ${price.toFixed(2)}`, 400, currentY); 
-            doc.text(`INR ${total.toFixed(2)}`, 480, currentY, { width: 60, align: 'right' });
-            
-            // Draw a light bottom line
-            doc.moveTo(50, currentY + 20).lineTo(pageWidth - 50, currentY + 20).strokeColor('#EEEEEE').lineWidth(1).stroke();
-            currentY += 40;
+        const drawRow = (desc, dueDate, paidDate, amount, isPaid) => {
+            doc.font('Helvetica').fillColor(isPaid ? '#166534' : '#92400e').fontSize(10);
+            doc.text(desc, 70, currentY, { width: 200 });
+            doc.fillColor('#666666').text(dueDate, 280, currentY, { width: 95 });
+            doc.text(paidDate, 380, currentY, { width: 95 });
+            doc.fillColor(isPaid ? '#10b981' : '#f59e0b').font('Helvetica-Bold')
+               .text('INR ' + Number(amount).toFixed(2), 480, currentY, { width: 60, align: 'right' });
+            doc.moveTo(50, currentY + 22).lineTo(pageWidth - 50, currentY + 22).strokeColor('#EEEEEE').lineWidth(1).stroke();
+            currentY += 38;
         };
 
-        // Base Plan
-        const planName = booking.plan ? booking.plan.plan_name : 'Rental Plan';
-        const baseAmount = booking.total_amount || 0;
-        drawRow(`EV Rental - ${planName}`, 1, baseAmount, baseAmount);
-
-        const gstAmount = booking.gst_amount || 0;
-        if (gstAmount > 0) {
-            drawRow('GST (5%)', 1, gstAmount, gstAmount);
+        if (isInstallment) {
+            allInstallments.forEach(inst => {
+                const isPaid = inst.status === 'paid';
+                const dueStr = inst.due_date ? new Date(inst.due_date).toLocaleDateString('en-IN') : '-';
+                const paidStr = isPaid && inst.paid_date ? new Date(inst.paid_date).toLocaleDateString('en-IN') : (isPaid ? 'Paid' : 'Pending');
+                drawRow('Week ' + inst.installment_no + ' - Installment', dueStr, paidStr, inst.amount, isPaid);
+            });
+        } else {
+            const planName = booking.plan ? booking.plan.plan_name : 'Rental Plan';
+            drawRow('EV Rental - ' + planName, new Date(booking.start_date).toLocaleDateString('en-IN'), new Date().toLocaleDateString('en-IN'), booking.total_amount || 0, true);
+            if ((booking.gst_amount || 0) > 0) drawRow('GST (5%)', '-', '-', booking.gst_amount, true);
+            if (booking.security_deposit > 0) drawRow('Security Deposit', '-', '-', booking.security_deposit, true);
+            if (booking.late_fee > 0) drawRow('Late Fee', '-', '-', booking.late_fee, false);
+            if ((booking.discount_amount || 0) > 0) drawRow('Discount Applied', '-', '-', -booking.discount_amount, true);
         }
 
-        if (booking.security_deposit > 0) {
-            drawRow('Security Deposit', 1, booking.security_deposit, booking.security_deposit);
+        // Summary Box
+        currentY += 10;
+        if (isInstallment) {
+            const totalPaid = paidInstallments.reduce((s, i) => s + i.amount, 0);
+            const totalPending = pendingInstallments.reduce((s, i) => s + i.amount, 0);
+            doc.rect(50, currentY, pageWidth - 100, 80).fill('#F8F9FA');
+            doc.font('Helvetica-Bold').fillColor('#333333').fontSize(11);
+            doc.text('Total Paid:', 70, currentY + 12);
+            doc.fillColor('#10b981').text('INR ' + totalPaid.toFixed(2), 200, currentY + 12);
+            doc.fillColor('#333333').text('Remaining Due:', 70, currentY + 32);
+            doc.fillColor('#ef4444').text('INR ' + totalPending.toFixed(2), 200, currentY + 32);
+            doc.fillColor('#333333').text('Grand Total:', 70, currentY + 52);
+            doc.fillColor('#1d4ed8').text('INR ' + booking.grand_total.toFixed(2), 200, currentY + 52);
+        } else {
+            doc.rect(380, currentY, 170, 40).fill('#F8F9FA');
+            doc.font('Helvetica-Bold').fillColor('#333333').fontSize(14);
+            doc.text('TOTAL PAID:', 395, currentY + 12);
+            doc.fillColor('#10b981').text('INR ' + booking.grand_total.toFixed(2), 470, currentY + 12, { width: 70, align: 'right' });
         }
-        
-        if (booking.late_fee > 0) {
-            drawRow('Late Fee', 1, booking.late_fee, booking.late_fee);
-        }
 
-        if (booking.discount_amount > 0) {
-            doc.text('Discount Applied', 70, currentY);
-            doc.text('1', 320, currentY);
-            doc.text(`-INR ${booking.discount_amount.toFixed(2)}`, 400, currentY);
-            doc.text(`-INR ${booking.discount_amount.toFixed(2)}`, 480, currentY, { width: 60, align: 'right' });
-            doc.moveTo(50, currentY + 20).lineTo(pageWidth - 50, currentY + 20).strokeColor('#EEEEEE').lineWidth(1).stroke();
-            currentY += 40;
-        }
+        // Footer
+        const footerY = pageHeight - 80;
+        doc.moveTo(50, footerY).lineTo(pageWidth - 50, footerY).strokeColor('#DDDDDD').lineWidth(1).stroke();
+        doc.fontSize(9).font('Helvetica-Oblique').fillColor('#999999');
+        doc.text('Thank you for choosing TRIS Electric.', 50, footerY + 15, { align: 'center' });
+        doc.text('This is a computer-generated invoice and requires no physical signature.', 50, footerY + 30, { align: 'center' });
 
-        // 7. Total Section
-        currentY += 20;
-        doc.font('Helvetica-Bold').fillColor('#333333').fontSize(14);
-        doc.text('TOTAL', 400, currentY);
-        doc.text(`INR ${booking.grand_total.toFixed(2)}`, 480, currentY, { width: 60, align: 'right' });
-
-        // 8. Footer (Notes & Payment Method)
-        currentY += 60;
-        doc.fontSize(11);
-        doc.font('Helvetica-Bold').text('Payment method: ', 50, currentY, { continued: true })
-           .font('Helvetica').fillColor('#666666').text(booking.payment_method || 'Online / Wallet');
-        
-        currentY += 20;
-        doc.font('Helvetica-Bold').fillColor('#333333').text('Note: ', 50, currentY, { continued: true })
-           .font('Helvetica').fillColor('#666666').text('Thank you for choosing TRIS Electric!');
-
-        // Finalize PDF
         doc.end();
-
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

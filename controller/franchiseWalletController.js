@@ -186,6 +186,17 @@ exports.approveWithdrawal = async (req, res) => {
         }
         await withdrawal.save();
 
+        // Emit real-time event to franchise
+        const io = req.app.get('io');
+        if (io) {
+            io.to(franchise._id.toString()).emit('withdrawal_status_updated', {
+                withdrawalId: withdrawal._id,
+                status: 'approved',
+                admin_note: withdrawal.admin_note,
+                payment_proof: withdrawal.payment_proof || null
+            });
+        }
+
         await sendNotification({
             recipient: franchise._id,
             recipient_role: 'franchise',
@@ -221,6 +232,16 @@ exports.rejectWithdrawal = async (req, res) => {
         await withdrawal.save();
 
         const franchise = await FranchiseStore.findById(withdrawal.franchise);
+
+        // Emit real-time event to franchise
+        const io = req.app.get('io');
+        if (io && franchise) {
+            io.to(franchise._id.toString()).emit('withdrawal_status_updated', {
+                withdrawalId: withdrawal._id,
+                status: 'rejected',
+                admin_note: withdrawal.admin_note
+            });
+        }
 
         // Refund if it was deducted on request
         if (franchise) {
@@ -387,6 +408,17 @@ exports.updateWithdrawalStatusAdmin = async (req, res) => {
         await withdrawal.save();
 
         const franchise = await FranchiseStore.findById(withdrawal.franchise);
+
+        // Emit real-time event to franchise
+        const io = req.app.get('io');
+        if (io && franchise) {
+            io.to(franchise._id.toString()).emit('withdrawal_status_updated', {
+                withdrawalId: withdrawal._id,
+                status: withdrawal.status,
+                admin_note: withdrawal.admin_note,
+                payment_proof: withdrawal.payment_proof || null
+            });
+        }
 
         // Handle refund if moving to a failed/rejected state from a previously deducted state
         const isFailedState = ['failed', 'rejected'].includes(status);

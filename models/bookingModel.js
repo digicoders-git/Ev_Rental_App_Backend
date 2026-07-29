@@ -150,12 +150,16 @@ const bookingSchema = new mongoose.Schema({
         transform: function(doc, ret) {
             const gt = Math.round(ret.grand_total || 0);
             const tp = Math.round(ret.total_paid || 0);
+            const due = gt - tp;
 
-            if (tp >= gt && gt > 0) {
+            if (gt > 0 && due <= 0) {
                 ret.payment_status = 'paid';
-            } else if (ret.payment_method === 'installments' && ret.payment_status !== 'paid') {
+            } else if (tp > 0 && due > 0) {
+                ret.payment_status = 'partially_paid';
+            } else if (tp === 0) {
                 ret.payment_status = 'pending';
             }
+            ret.due_amount = Math.max(0, due);
             return ret;
         }
     },
@@ -164,12 +168,16 @@ const bookingSchema = new mongoose.Schema({
         transform: function(doc, ret) {
             const gt = Math.round(ret.grand_total || 0);
             const tp = Math.round(ret.total_paid || 0);
+            const due = gt - tp;
 
-            if (tp >= gt && gt > 0) {
+            if (gt > 0 && due <= 0) {
                 ret.payment_status = 'paid';
-            } else if (ret.payment_method === 'installments' && ret.payment_status !== 'paid') {
+            } else if (tp > 0 && due > 0) {
+                ret.payment_status = 'partially_paid';
+            } else if (tp === 0) {
                 ret.payment_status = 'pending';
             }
+            ret.due_amount = Math.max(0, due);
             return ret;
         }
     }

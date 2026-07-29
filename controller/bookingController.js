@@ -301,16 +301,15 @@ exports.verifyPayment = async (req, res) => {
         }
 
         booking.payment_status = 'paid';
-        booking.booking_status = 'confirmed';
+        // booking_status stays 'pending' — Franchisee must approve before it becomes 'confirmed'
         booking.transaction_id = razorpay_payment_id;
         booking.razorpay_payment_id = razorpay_payment_id;
         booking.total_paid = booking.grand_total;
         await booking.save();
-        await creditFranchiseWallet(booking._id, booking.grand_total);
 
         res.status(200).json({
             success: true,
-            message: 'Payment verified and booking confirmed successfully',
+            message: 'Payment verified successfully. Booking is pending franchise approval.',
             data: booking
         });
     } catch (error) {
@@ -1134,6 +1133,11 @@ exports.approveBooking = async (req, res) => {
         }
 
         await booking.save();
+
+        // Credit franchise wallet on approval (for online/wallet pre-paid bookings)
+        if (booking.total_paid > 0) {
+            await creditFranchiseWallet(booking._id, booking.total_paid);
+        }
 
         res.status(200).json({ success: true, message: 'Booking approved and confirmed', data: booking });
     } catch (error) {

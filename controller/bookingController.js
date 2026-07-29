@@ -97,7 +97,6 @@ exports.createBooking = async (req, res) => {
         // Since base_rent + calculated_gst = plan_price_inclusive
         const grand_total = Math.round(total_amount + gst_amount + security_deposit - discount_amount);
 
-        bookingUserId = req.user ? req.user.id : null;
         let creatorName = req.user ? (req.user.name || 'User') : 'Franchise/Admin';
 
         if (req.franchise || (req.user && req.user.role === 'admin')) {

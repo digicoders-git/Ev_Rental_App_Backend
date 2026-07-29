@@ -976,6 +976,33 @@ exports.cancelBooking = async (req, res) => {
     }
 };
 
+// ─── Shared helper: derive weekly rate dynamically from booking's actual data ───
+const getDynamicWeeklyRate = (booking, plan) => {
+    // Step 1: Try to derive from actual booking amount (most accurate)
+    // total_amount = base rent paid (excluding security deposit, discount already applied)
+    // original weeks = (end_date - start_date) / 7 days
+    const originalMs = new Date(booking.end_date) - new Date(booking.start_date);
+    const originalWeeks = originalMs / (7 * 24 * 60 * 60 * 1000);
+
+    // Only use booking-derived rate if original booking was at least 0.5 weeks
+    // and total_amount is a valid positive number
+    if (originalWeeks >= 0.5 && booking.total_amount > 0) {
+        // total_amount is base rent (before GST). Add GST back to get inclusive weekly rate
+        const inclusiveTotal = booking.total_amount + (booking.gst_amount || 0);
+        const derivedWeeklyRate = Math.round(inclusiveTotal / originalWeeks);
+        if (derivedWeeklyRate > 0) return derivedWeeklyRate;
+    }
+
+    // Step 2: Fallback — derive from plan price based on pricing_type
+    switch (plan.pricing_type) {
+        case 'weekly':  return Math.round(plan.price);
+        case 'monthly': return Math.round(plan.price / 4);
+        case 'daily':   return Math.round(plan.price * 7);
+        case 'hourly':  return Math.round(plan.price * 24 * 7);
+        default:        return Math.round(plan.price);
+    }
+};
+
 // @desc    Extend Booking — Weekly wise, fully dynamic installments
 // @route   POST /api/bookings/:id/extend
 // @access  Private (Admin / Franchise)
@@ -998,41 +1025,25 @@ exports.extendBooking = async (req, res) => {
             booking.auto_renew = auto_renew === true || auto_renew === 'true';
         }
 
-        // Weekly rate — always derive from plan price
-        const plan = booking.plan;
-        let weeklyRate;
-        if (plan.pricing_type === 'weekly') {
-            weeklyRate = plan.price;
-        } else if (plan.pricing_type === 'monthly') {
-            weeklyRate = Math.round(plan.price / 4);
-        } else if (plan.pricing_type === 'daily') {
-            weeklyRate = Math.round(plan.price * 7);
-        } else if (plan.pricing_type === 'hourly') {
-            weeklyRate = Math.round(plan.price * 24 * 7);
-        } else {
-            weeklyRate = Math.round(plan.price); // custom — treat as weekly
-        }
-
+        // Fully dynamic weekly rate derived from actual booking data
+        const weeklyRate = getDynamicWeeklyRate(booking, booking.plan);
         const totalExtraCost = weeklyRate * weeks;
         const currentEnd = new Date(booking.end_date);
 
-        // Get current max installment number
-        let maxInstNo = (booking.payment_installments || []).reduce(
+        const maxInstNo = (booking.payment_installments || []).reduce(
             (max, inst) => Math.max(max, inst.installment_no), 0
         );
 
-        // Create one installment per week — due date starts from current end_date
+        // One installment per week — due dates are sequential from current end_date
         for (let i = 0; i < weeks; i++) {
-            const dueDate = new Date(currentEnd.getTime() + i * 7 * 24 * 60 * 60 * 1000);
             booking.payment_installments.push({
                 installment_no: maxInstNo + i + 1,
                 amount: weeklyRate,
-                due_date: dueDate,
+                due_date: new Date(currentEnd.getTime() + i * 7 * 24 * 60 * 60 * 1000),
                 status: 'pending'
             });
         }
 
-        // Extend end_date by total weeks
         currentEnd.setDate(currentEnd.getDate() + weeks * 7);
         booking.end_date = currentEnd;
         booking.total_amount += totalExtraCost;
@@ -1048,7 +1059,7 @@ exports.extendBooking = async (req, res) => {
             recipient: booking.user,
             recipient_role: 'user',
             title: '📅 Plan Extended',
-            message: `Your booking #${booking.booking_id} has been extended by ${weeks} week${weeks > 1 ? 's' : ''}. ${weeks} new weekly installment${weeks > 1 ? 's' : ''} added.`,
+            message: `Your booking #${booking.booking_id} has been extended by ${weeks} week${weeks > 1 ? 's' : ''}. ${weeks} new weekly installment${weeks > 1 ? 's' : ''} of ₹${weeklyRate} each added.`,
             type: 'booking',
             related_id: booking._id,
         });

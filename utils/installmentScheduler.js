@@ -4,6 +4,26 @@ const User = require('../models/userModel');
 const { sendPushNotification } = require('./fcmHelper');
 const { sendNotification } = require('./notificationHelper');
 
+// ─── Shared helper: derive weekly rate from actual booking data ───
+const getDynamicWeeklyRate = (booking, plan) => {
+    const originalMs = new Date(booking.end_date) - new Date(booking.start_date);
+    const originalWeeks = originalMs / (7 * 24 * 60 * 60 * 1000);
+
+    if (originalWeeks >= 0.5 && booking.total_amount > 0) {
+        const inclusiveTotal = booking.total_amount + (booking.gst_amount || 0);
+        const derivedWeeklyRate = Math.round(inclusiveTotal / originalWeeks);
+        if (derivedWeeklyRate > 0) return derivedWeeklyRate;
+    }
+
+    switch (plan.pricing_type) {
+        case 'weekly':  return Math.round(plan.price);
+        case 'monthly': return Math.round(plan.price / 4);
+        case 'daily':   return Math.round(plan.price * 7);
+        case 'hourly':  return Math.round(plan.price * 24 * 7);
+        default:        return Math.round(plan.price);
+    }
+};
+
 const formatDate = (date) =>
     new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
@@ -153,29 +173,14 @@ const autoRenewBookings = async () => {
         }).populate('plan');
 
         for (const booking of renewals) {
-            const plan = booking.plan;
-
-            // Always renew by 1 week — weekly installment system
-            const weeksToRenew = 1;
-            let weeklyRate;
-            if (plan.pricing_type === 'weekly') {
-                weeklyRate = plan.price;
-            } else if (plan.pricing_type === 'monthly') {
-                weeklyRate = Math.round(plan.price / 4);
-            } else if (plan.pricing_type === 'daily') {
-                weeklyRate = Math.round(plan.price * 7);
-            } else if (plan.pricing_type === 'hourly') {
-                weeklyRate = Math.round(plan.price * 24 * 7);
-            } else {
-                weeklyRate = Math.round(plan.price);
-            }
-
+            // Fully dynamic weekly rate — same logic as extendBooking controller
+            const weeklyRate = getDynamicWeeklyRate(booking, booking.plan);
             const currentEnd = new Date(booking.end_date);
+
             const maxInstNo = (booking.payment_installments || []).reduce(
                 (max, inst) => Math.max(max, inst.installment_no), 0
             );
 
-            // Add 1 new weekly installment due at current end_date
             booking.payment_installments.push({
                 installment_no: maxInstNo + 1,
                 amount: weeklyRate,
@@ -183,14 +188,13 @@ const autoRenewBookings = async () => {
                 status: 'pending'
             });
 
-            // Extend end_date by 7 days
             currentEnd.setDate(currentEnd.getDate() + 7);
             booking.end_date = currentEnd;
             booking.total_amount += weeklyRate;
             booking.grand_total += weeklyRate;
 
             await booking.save();
-            console.log(`[AutoRenew] Booking #${booking.booking_id} auto-renewed by 1 week. New installment ₹${weeklyRate} added.`);
+            console.log(`[AutoRenew] Booking #${booking.booking_id} auto-renewed. Rate: ₹${weeklyRate}/week (dynamic).`);
 
             if (booking.user) {
                 await sendNotification({

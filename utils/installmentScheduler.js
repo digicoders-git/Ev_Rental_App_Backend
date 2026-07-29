@@ -144,7 +144,7 @@ const runInstallmentNotifications = async (force = false) => {
 const autoRenewBookings = async () => {
     try {
         const now = new Date();
-        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours from now
+        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
         const renewals = await Booking.find({
             auto_renew: true,
@@ -153,42 +153,51 @@ const autoRenewBookings = async () => {
         }).populate('plan');
 
         for (const booking of renewals) {
-            const extraDays = booking.plan.min_duration || 7; // default to 7 if min_duration not available
-            
-            let dailyRate = booking.plan.price;
-            if (booking.plan.pricing_type === 'weekly') dailyRate = booking.plan.price / 7;
-            else if (booking.plan.pricing_type === 'monthly') dailyRate = booking.plan.price / 30;
-            else if (booking.plan.pricing_type === 'hourly') dailyRate = booking.plan.price * 24;
-            
-            const extraCost = Math.round(dailyRate * extraDays);
-            const currentEnd = new Date(booking.end_date);
+            const plan = booking.plan;
 
-            if (booking.payment_method === 'installments' && booking.payment_installments) {
-                const maxInstNo = booking.payment_installments.reduce((max, inst) => Math.max(max, inst.installment_no), 0);
-                const dueDate = new Date(currentEnd);
-                
-                booking.payment_installments.push({
-                    installment_no: maxInstNo + 1,
-                    amount: extraCost,
-                    due_date: dueDate,
-                    status: 'pending'
-                });
+            // Always renew by 1 week — weekly installment system
+            const weeksToRenew = 1;
+            let weeklyRate;
+            if (plan.pricing_type === 'weekly') {
+                weeklyRate = plan.price;
+            } else if (plan.pricing_type === 'monthly') {
+                weeklyRate = Math.round(plan.price / 4);
+            } else if (plan.pricing_type === 'daily') {
+                weeklyRate = Math.round(plan.price * 7);
+            } else if (plan.pricing_type === 'hourly') {
+                weeklyRate = Math.round(plan.price * 24 * 7);
+            } else {
+                weeklyRate = Math.round(plan.price);
             }
 
-            currentEnd.setDate(currentEnd.getDate() + extraDays);
+            const currentEnd = new Date(booking.end_date);
+            const maxInstNo = (booking.payment_installments || []).reduce(
+                (max, inst) => Math.max(max, inst.installment_no), 0
+            );
+
+            // Add 1 new weekly installment due at current end_date
+            booking.payment_installments.push({
+                installment_no: maxInstNo + 1,
+                amount: weeklyRate,
+                due_date: new Date(currentEnd),
+                status: 'pending'
+            });
+
+            // Extend end_date by 7 days
+            currentEnd.setDate(currentEnd.getDate() + 7);
             booking.end_date = currentEnd;
-            booking.total_amount += extraCost;
-            booking.grand_total += extraCost;
-            
+            booking.total_amount += weeklyRate;
+            booking.grand_total += weeklyRate;
+
             await booking.save();
-            console.log(`[AutoRenew] Booking #${booking.booking_id} auto-renewed by ${extraDays} days.`);
-            
+            console.log(`[AutoRenew] Booking #${booking.booking_id} auto-renewed by 1 week. New installment ₹${weeklyRate} added.`);
+
             if (booking.user) {
                 await sendNotification({
                     recipient: booking.user,
                     recipient_role: 'user',
                     title: '♻️ Plan Auto-Renewed',
-                    message: `Your booking #${booking.booking_id} has been automatically renewed for ${extraDays} days.`,
+                    message: `Your booking #${booking.booking_id} has been automatically renewed for 1 week. New installment of ₹${weeklyRate} is due.`,
                     type: 'booking',
                     related_id: booking._id,
                 });

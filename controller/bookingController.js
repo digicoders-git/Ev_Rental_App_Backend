@@ -976,22 +976,21 @@ exports.cancelBooking = async (req, res) => {
     }
 };
 
-// @desc    Extend Booking
+// @desc    Extend Booking — Weekly wise, fully dynamic installments
 // @route   POST /api/bookings/:id/extend
-// @access  Private
+// @access  Private (Admin / Franchise)
 exports.extendBooking = async (req, res) => {
     try {
-        const { extra_days, auto_renew } = req.body; // Number of days to extend
-        if (!extra_days || extra_days <= 0) {
-            return res.status(400).json({ success: false, message: 'Please provide valid extra_days' });
+        const { extra_weeks, auto_renew } = req.body;
+        const weeks = parseInt(extra_weeks);
+        if (!weeks || weeks <= 0) {
+            return res.status(400).json({ success: false, message: 'Please provide valid extra_weeks (minimum 1)' });
         }
 
         const booking = await Booking.findById(req.params.id).populate('plan');
-        if (!booking) {
-            return res.status(404).json({ success: false, message: 'Booking not found' });
-        }
+        if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
 
-        if (booking.booking_status === 'completed' || booking.booking_status === 'cancelled') {
+        if (['completed', 'cancelled'].includes(booking.booking_status)) {
             return res.status(400).json({ success: false, message: 'Cannot extend a completed or cancelled booking' });
         }
 
@@ -999,64 +998,70 @@ exports.extendBooking = async (req, res) => {
             booking.auto_renew = auto_renew === true || auto_renew === 'true';
         }
 
-        const currentEnd = new Date(booking.end_date);
-        
-        // Calculate extra cost properly based on pricing_type
-        let dailyRate = booking.plan.price;
-        if (booking.plan.pricing_type === 'weekly') {
-            dailyRate = booking.plan.price / 7;
-        } else if (booking.plan.pricing_type === 'monthly') {
-            dailyRate = booking.plan.price / 30;
-        } else if (booking.plan.pricing_type === 'hourly') {
-            dailyRate = booking.plan.price * 24;
+        // Weekly rate — always derive from plan price
+        const plan = booking.plan;
+        let weeklyRate;
+        if (plan.pricing_type === 'weekly') {
+            weeklyRate = plan.price;
+        } else if (plan.pricing_type === 'monthly') {
+            weeklyRate = Math.round(plan.price / 4);
+        } else if (plan.pricing_type === 'daily') {
+            weeklyRate = Math.round(plan.price * 7);
+        } else if (plan.pricing_type === 'hourly') {
+            weeklyRate = Math.round(plan.price * 24 * 7);
+        } else {
+            weeklyRate = Math.round(plan.price); // custom — treat as weekly
         }
-        
-        const extraCost = Math.round(dailyRate * parseInt(extra_days));
 
-        // Add installment if payment_method is installments
-        if (booking.payment_method === 'installments' && booking.payment_installments) {
-            // Find max installment number
-            const maxInstNo = booking.payment_installments.reduce((max, inst) => Math.max(max, inst.installment_no), 0);
-            
-            // New installment due date is the current end date (the start of the extension)
-            const dueDate = new Date(currentEnd);
-            
+        const totalExtraCost = weeklyRate * weeks;
+        const currentEnd = new Date(booking.end_date);
+
+        // Get current max installment number
+        let maxInstNo = (booking.payment_installments || []).reduce(
+            (max, inst) => Math.max(max, inst.installment_no), 0
+        );
+
+        // Create one installment per week — due date starts from current end_date
+        for (let i = 0; i < weeks; i++) {
+            const dueDate = new Date(currentEnd.getTime() + i * 7 * 24 * 60 * 60 * 1000);
             booking.payment_installments.push({
-                installment_no: maxInstNo + 1,
-                amount: extraCost,
+                installment_no: maxInstNo + i + 1,
+                amount: weeklyRate,
                 due_date: dueDate,
                 status: 'pending'
             });
         }
 
-        currentEnd.setDate(currentEnd.getDate() + parseInt(extra_days));
+        // Extend end_date by total weeks
+        currentEnd.setDate(currentEnd.getDate() + weeks * 7);
         booking.end_date = currentEnd;
-        booking.total_amount += extraCost;
-        booking.grand_total += extraCost;
-        
+        booking.total_amount += totalExtraCost;
+        booking.grand_total += totalExtraCost;
+
         if (booking.grand_total > booking.total_paid) {
             booking.payment_status = booking.total_paid > 0 ? 'partially_paid' : 'pending';
         }
-        
-        await booking.save();
-        
-        // Notify the user about the plan extension
-        const notifyUserId = booking.user;
-        if (notifyUserId) {
-            await sendNotification({
-                recipient: notifyUserId,
-                recipient_role: 'user',
-                title: '📅 Plan Extended',
-                message: `Your booking #${booking.booking_id} has been extended by ${extra_days} days.`,
-                type: 'booking',
-                related_id: booking._id,
-            });
-        }
 
-        res.status(200).json({ 
-            success: true, 
-            message: `Booking extended by ${extra_days} days. New total amount applied.`, 
-            data: booking 
+        await booking.save();
+
+        await sendNotification({
+            recipient: booking.user,
+            recipient_role: 'user',
+            title: '📅 Plan Extended',
+            message: `Your booking #${booking.booking_id} has been extended by ${weeks} week${weeks > 1 ? 's' : ''}. ${weeks} new weekly installment${weeks > 1 ? 's' : ''} added.`,
+            type: 'booking',
+            related_id: booking._id,
+        });
+
+        res.status(200).json({
+            success: true,
+            message: `Booking extended by ${weeks} week${weeks > 1 ? 's' : ''}. ${weeks} installment${weeks > 1 ? 's' : ''} of ₹${weeklyRate} each added.`,
+            weekly_rate: weeklyRate,
+            weeks_added: weeks,
+            total_extra_cost: totalExtraCost,
+            new_end_date: booking.end_date,
+            new_installments: booking.payment_installments.slice(-weeks),
+            data: booking
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

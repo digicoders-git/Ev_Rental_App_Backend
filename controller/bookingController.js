@@ -1637,7 +1637,7 @@ exports.approveVehicleSubmission = async (req, res) => {
 
         if (booking.vehicle) {
             const Vehicle = require('../models/vehicleModel');
-            await Vehicle.findByIdAndUpdate(booking.vehicle._id, { status: 'available' });
+            await Vehicle.findByIdAndUpdate(booking.vehicle._id, { status: 'active' });
         }
 
         await booking.save();

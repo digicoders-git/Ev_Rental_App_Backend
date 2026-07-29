@@ -279,3 +279,73 @@ exports.updateTicket = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// @desc    Update ticket status and reply (Franchise)
+// @route   PUT /api/support/franchise/ticket/:id
+// @access  Private/Franchise
+exports.updateTicketFranchise = async (req, res) => {
+    try {
+        const { status, admin_reply } = req.body;
+        const storeId = req.franchise.id;
+
+        const ticket = await Support.findById(req.params.id);
+        if (!ticket) {
+            return res.status(404).json({ success: false, message: 'Ticket not found' });
+        }
+
+        // Build the same ownership check as getFranchiseTickets
+        const franchiseVehicles = await Vehicle.find({ franchise: storeId }).select('_id');
+        const vehicleIds = franchiseVehicles.map(v => v._id.toString());
+
+        const franchiseBookings = await Booking.find({ franchise: storeId }).select('_id user');
+        const bookingIds = franchiseBookings.map(b => b._id.toString());
+        const userIds = [...new Set(franchiseBookings.map(b => b.user?.toString()).filter(Boolean))];
+
+        const ticketFranchise = ticket.franchise?._id?.toString() || ticket.franchise?.toString() || '';
+        const ticketVehicle = ticket.vehicle?._id?.toString() || ticket.vehicle?.toString() || '';
+        const ticketBooking = ticket.booking?._id?.toString() || ticket.booking?.toString() || '';
+        const ticketUser = ticket.user?._id?.toString() || ticket.user?.toString() || '';
+
+        const isAuthorized =
+            ticketFranchise === storeId.toString() ||
+            vehicleIds.includes(ticketVehicle) ||
+            bookingIds.includes(ticketBooking) ||
+            userIds.includes(ticketUser);
+
+        if (!isAuthorized) {
+            return res.status(403).json({ success: false, message: 'Not authorized to update this ticket' });
+        }
+
+        if (status) ticket.status = status;
+        if (admin_reply) ticket.admin_reply = admin_reply;
+        if (status === 'resolved') ticket.resolved_at = Date.now();
+
+        await ticket.save();
+
+        const messageStr = `Your ticket #${ticket.ticket_id} has been ${status || 'updated'} by franchise.${admin_reply ? ' Note: ' + admin_reply : ''}`;
+        await sendNotification({
+            recipient: ticket.user,
+            recipient_role: 'user',
+            title: 'Support Ticket Update',
+            message: messageStr,
+            type: 'system',
+            related_id: ticket._id
+        });
+
+        if (ticket.user) {
+            const User = require('../models/userModel');
+            const customer = await User.findById(ticket.user);
+            if (customer?.fcm_token) {
+                const { sendPushNotification } = require('../utils/fcmHelper');
+                await sendPushNotification(customer.fcm_token, 'Support Ticket Update', messageStr, {
+                    type: 'ticket_update',
+                    ticket_id: ticket._id.toString()
+                }).catch(err => console.log('FCM Error:', err));
+            }
+        }
+
+        res.status(200).json({ success: true, message: 'Ticket updated successfully', data: ticket });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

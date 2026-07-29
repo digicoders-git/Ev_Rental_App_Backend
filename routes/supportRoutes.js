@@ -5,7 +5,8 @@ const {
     getMyTickets,
     getFranchiseTickets,
     getAllTickets,
-    updateTicket
+    updateTicket,
+    updateTicketFranchise
 } = require('../controller/supportController');
 const { protect, admin, franchiseProtect, anyProtect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -14,6 +15,7 @@ const upload = require('../middleware/uploadMiddleware');
 router.post('/ticket', anyProtect, upload.array('attachments', 5), createTicket);
 router.get('/my-tickets', anyProtect, getMyTickets);
 router.get('/franchise/tickets', franchiseProtect, getFranchiseTickets);
+router.put('/franchise/ticket/:id', franchiseProtect, updateTicketFranchise);
 
 // Admin routes
 router.get('/admin/all', protect, admin, getAllTickets);

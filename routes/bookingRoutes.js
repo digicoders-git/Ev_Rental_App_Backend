@@ -59,7 +59,7 @@ router.get('/:id/calculate-late-fee', anyProtect, calculateLateFee);
 router.post('/:id/return', anyProtect, returnVehicle);
 router.get('/:id/receipt', anyProtect, downloadReceipt);
 router.post('/:id/cancel', protect, cancelBooking);
-router.post('/:id/extend', protect, extendBooking);
+router.post('/:id/extend', anyProtect, extendBooking);
 
 // Admin & Management
 router.get('/', anyProtect, getAllBookings);

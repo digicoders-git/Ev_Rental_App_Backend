@@ -199,14 +199,19 @@ const autoRenewBookings = async () => {
     }
 };
 
-// Run every 6 hours
+// Notifications every 6 hours, auto-renew daily at midnight
 const startInstallmentScheduler = (io) => {
     if (io) ioInstance = io;
+
     cron.schedule('0 */6 * * *', () => {
         runInstallmentNotifications(false);
+    }, { timezone: 'Asia/Kolkata' });
+
+    cron.schedule('0 0 * * *', () => {
         autoRenewBookings();
     }, { timezone: 'Asia/Kolkata' });
-    console.log('[InstallmentScheduler] Started — runs every 6 hours');
+
+    console.log('[InstallmentScheduler] Started — notifications every 6h, auto-renew daily at midnight');
 };
 
 module.exports = { startInstallmentScheduler, runInstallmentNotifications, autoRenewBookings };

@@ -1041,9 +1041,10 @@ exports.extendBooking = async (req, res) => {
         await booking.save();
         
         // Notify the user about the plan extension
-        if (booking.user) {
+        const notifyUserId = booking.user;
+        if (notifyUserId) {
             await sendNotification({
-                recipient: booking.user,
+                recipient: notifyUserId,
                 recipient_role: 'user',
                 title: '📅 Plan Extended',
                 message: `Your booking #${booking.booking_id} has been extended by ${extra_days} days.`,

@@ -33,7 +33,9 @@ exports.getWalletDetails = async (req, res) => {
 
         const SERVICE_FEE_PERCENT = 8;
         const totalGrossRevenue = Number((franchise.total_gross_revenue || 0).toFixed(2));
+        // Service fee is always exactly 8% of gross — this is the source of truth
         const serviceFee = Number((totalGrossRevenue * SERVICE_FEE_PERCENT / 100).toFixed(2));
+        // Net revenue = gross - 8% service fee
         const totalNetRevenue = Number((totalGrossRevenue - serviceFee).toFixed(2));
 
         res.status(200).json({

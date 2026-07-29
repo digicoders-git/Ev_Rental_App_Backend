@@ -17,14 +17,16 @@ exports.createPlan = async (req, res) => {
 // @access  Public
 exports.getAllPlans = async (req, res) => {
     try {
-        const plans = await RentalPlan.find({ status: 'active' }).sort('-createdAt');
+        // Admin/franchise panel passes ?all=true to get all plans including inactive
+        const showAll = req.query.all === 'true';
+        const query = showAll ? {} : { status: 'active' };
+        const plans = await RentalPlan.find(query).sort('-createdAt');
         const GlobalSetting = require('../models/globalSettingModel');
         const globalLateFeeSetting = await GlobalSetting.findOne({ key: 'late_fee_per_day' });
         const globalLateFee = globalLateFeeSetting ? Number(globalLateFeeSetting.value) : 200;
 
         const dynamicPlans = plans.map(p => {
             const planObj = p.toObject();
-            // Fully dynamic: use global setting for late fee
             planObj.late_fee_per_day = globalLateFee;
             return planObj;
         });

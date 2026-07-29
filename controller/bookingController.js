@@ -897,11 +897,11 @@ exports.downloadReceipt = async (req, res) => {
         // Summary Box
         currentY += 10;
         if (isInstallment) {
-            const totalPaid = paidInstallments.reduce((s, i) => s + i.amount, 0);
-            const totalPending = pendingInstallments.reduce((s, i) => s + i.amount, 0);
+            const totalPaid = paidInstallments.reduce((s, i) => s + Number(i.amount || 0), 0);
+            const totalPending = pendingInstallments.reduce((s, i) => s + Number(i.amount || 0), 0);
             doc.rect(50, currentY, pageWidth - 100, 80).fill('#F8F9FA');
             doc.font('Helvetica-Bold').fillColor('#333333').fontSize(11);
-            doc.text('Total Paid:', 70, currentY + 12);
+            doc.text('Total Paid So Far:', 70, currentY + 12);
             doc.fillColor('#10b981').text('INR ' + totalPaid.toFixed(2), 200, currentY + 12);
             doc.fillColor('#333333').text('Remaining Due:', 70, currentY + 32);
             doc.fillColor('#ef4444').text('INR ' + totalPending.toFixed(2), 200, currentY + 32);

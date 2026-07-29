@@ -94,7 +94,15 @@ const franchiseStoreSchema = new mongoose.Schema({
     },
     razorpay_key_secret: {
         type: String,
-        default: ""
+        default: ''
+    },
+    latitude: {
+        type: Number,
+        default: null
+    },
+    longitude: {
+        type: Number,
+        default: null
     }
 }, {
     timestamps: true

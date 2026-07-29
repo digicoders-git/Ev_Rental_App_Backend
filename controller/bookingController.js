@@ -42,7 +42,24 @@ exports.createBooking = async (req, res) => {
             }
         }
 
-        // 1b. Check for Overlapping Bookings
+        // 1b. Check if this user already has an active booking
+        if (bookingUserId) {
+            const activeBooking = await Booking.findOne({
+                user: bookingUserId,
+                booking_status: { $in: ['pending', 'confirmed', 'ongoing'] }
+            }).select('booking_id booking_status vehicle').populate('vehicle', 'vehicle_name registration_number');
+
+            if (activeBooking) {
+                return res.status(400).json({
+                    success: false,
+                    message: `You already have an active vehicle booking (${activeBooking.booking_id}). Please return or complete your current booking before booking another vehicle.`,
+                    active_booking_id: activeBooking.booking_id,
+                    active_booking_status: activeBooking.booking_status
+                });
+            }
+        }
+
+        // 1c. Check for Overlapping Bookings
         const overlap = await Booking.findOne({
             vehicle,
             booking_status: { $in: ['confirmed', 'ongoing'] },

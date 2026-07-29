@@ -94,7 +94,7 @@ exports.updateFranchiseProfile = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Franchise not found' });
         }
 
-        const { store_name, owner_name, mobile, address, city, state } = req.body;
+        const { store_name, owner_name, mobile, address, city, state, latitude, longitude } = req.body;
 
         if (store_name) store.store_name = store_name;
         if (owner_name) store.owner_name = owner_name;
@@ -102,6 +102,8 @@ exports.updateFranchiseProfile = async (req, res) => {
         if (address) store.address = address;
         if (city) store.city = city;
         if (state) store.state = state;
+        if (latitude !== undefined) store.latitude = latitude === '' ? null : Number(latitude);
+        if (longitude !== undefined) store.longitude = longitude === '' ? null : Number(longitude);
 
         if (req.file) {
             store.profile_image = `/uploads/franchise/${req.file.filename}`;
@@ -600,7 +602,7 @@ exports.getFranchiseHistory = async (req, res) => {
 exports.getPublicFranchiseStores = async (req, res) => {
     try {
         const stores = await FranchiseStore.find({ status: 'active' })
-            .select('store_id store_name address city state mobile email profile_image')
+            .select('store_id store_name address city state mobile email profile_image latitude longitude')
             .sort('-createdAt');
         res.status(200).json({
             success: true,

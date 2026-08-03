@@ -187,7 +187,8 @@ exports.createBooking = async (req, res) => {
             drop_location,
             payment_method,
             payment_status: initial_payment_status,
-            payment_installments
+            payment_installments,
+            auto_renew: true // Defaulted to true so auto-renew works automatically
         });
 
         // Notify Admin

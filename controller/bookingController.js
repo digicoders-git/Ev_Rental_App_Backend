@@ -81,9 +81,31 @@ exports.createBooking = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Rental plan not found or not active' });
         }
 
-        // 3. Simple calculation (In a real app, calculate based on days)
-        // For now, take amounts from body or use defaults if not provided
-        const plan_price_inclusive = req.body.total_amount !== undefined ? req.body.total_amount : planData.price;
+        // 3. FULLY DYNAMIC CALCULATION based on plan pricing_type and duration
+        const tmpStart = new Date(start_date);
+        const tmpEnd = new Date(end_date);
+        const durationMs = tmpEnd - tmpStart;
+        
+        let calculatedTotal = planData.price;
+        if (planData.pricing_type === 'hourly') {
+            let hours = Math.ceil(durationMs / (60 * 60 * 1000));
+            calculatedTotal = planData.price * (hours > 0 ? hours : 1);
+        } else if (planData.pricing_type === 'daily') {
+            let days = Math.ceil(durationMs / (24 * 60 * 60 * 1000));
+            calculatedTotal = planData.price * (days > 0 ? days : 1);
+        } else if (planData.pricing_type === 'weekly') {
+            let weeks = Math.ceil(durationMs / (7 * 24 * 60 * 60 * 1000));
+            calculatedTotal = planData.price * (weeks > 0 ? weeks : 1);
+        } else if (planData.pricing_type === 'monthly') {
+            let months = Math.ceil(durationMs / (30 * 24 * 60 * 60 * 1000));
+            calculatedTotal = planData.price * (months > 0 ? months : 1);
+        }
+
+        // If frontend didn't pass total_amount, or passed the base unit price by mistake, use the fully calculated dynamic total
+        let plan_price_inclusive = req.body.total_amount !== undefined ? req.body.total_amount : calculatedTotal;
+        if (plan_price_inclusive == planData.price && calculatedTotal > planData.price) {
+            plan_price_inclusive = calculatedTotal;
+        }
         const security_deposit = req.body.security_deposit !== undefined ? Number(req.body.security_deposit) : 0;
         const discount_amount = req.body.discount_amount || 0;
         

@@ -31,17 +31,34 @@ exports.getWalletDetails = async (req, res) => {
         ]);
         const pendingWithdrawn = pendingResult.length > 0 ? pendingResult[0].total : 0;
 
+        const Booking = require('../models/bookingModel');
+        const bookingsResult = await Booking.aggregate([
+            { $match: { franchise: franchise._id } },
+            { $group: { _id: null, total: { $sum: '$total_paid' } } }
+        ]);
+        const totalGrossRevenue = bookingsResult.length > 0 ? Number(bookingsResult[0].total.toFixed(2)) : 0;
+
         const SERVICE_FEE_PERCENT = 8;
-        const totalGrossRevenue = Number((franchise.total_gross_revenue || 0).toFixed(2));
-        // Service fee is always exactly 8% of gross — this is the source of truth
+        // Service fee is exactly 8% of gross — this is the source of truth
         const serviceFee = Number((totalGrossRevenue * SERVICE_FEE_PERCENT / 100).toFixed(2));
         // Net revenue = gross - 8% service fee
         const totalNetRevenue = Number((totalGrossRevenue - serviceFee).toFixed(2));
 
+        // Dynamically calculate the actual Available Balance
+        const calculatedBalance = totalNetRevenue - totalWithdrawn - pendingWithdrawn;
+        const balance = Number((calculatedBalance > 0 ? calculatedBalance : 0).toFixed(2));
+
+        // Auto-correct the franchise model cache if needed
+        if (franchise.wallet_balance !== balance || franchise.total_gross_revenue !== totalGrossRevenue) {
+            franchise.wallet_balance = balance;
+            franchise.total_gross_revenue = totalGrossRevenue;
+            await franchise.save();
+        }
+
         res.status(200).json({
             success: true,
             data: {
-                balance: Number((franchise.wallet_balance || 0).toFixed(2)),
+                balance,
                 totalGrossRevenue,
                 serviceFee,
                 serviceFeePercent: SERVICE_FEE_PERCENT,

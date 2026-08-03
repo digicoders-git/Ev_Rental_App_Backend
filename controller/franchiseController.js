@@ -504,12 +504,11 @@ exports.getFranchiseHistory = async (req, res) => {
         const ongoingBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'ongoing', ...dateFilter });
         const cancelledBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'cancelled', ...dateFilter });
 
-        // 3. Revenue — aggregate from completed/non-cancelled bookings
+        // 3. Revenue - aggregate from all bookings (since all paid amounts are retained)
         const revenueStats = await Booking.aggregate([
             {
                 $match: {
                     franchise: new mongoose.Types.ObjectId(storeId),
-                    booking_status: { $ne: 'cancelled' },
                     ...dateFilter
                 }
             },
@@ -529,25 +528,29 @@ exports.getFranchiseHistory = async (req, res) => {
 
         // Wallet & Withdrawals
         const withdrawnResult = await FranchiseWithdrawal.aggregate([
-            { $match: { franchise: new mongoose.Types.ObjectId(storeId), status: { $in: ['approved', 'released'] } } },
+            { $match: { franchise: new mongoose.Types.ObjectId(storeId), status: { $in: ['approved', 'released', 'completed'] } } },
             { $group: { _id: null, total: { $sum: '$amount' } } }
         ]);
         const totalWithdrawn = withdrawnResult.length > 0 ? withdrawnResult[0].total : 0;
 
         const pendingResult = await FranchiseWithdrawal.aggregate([
-            { $match: { franchise: new mongoose.Types.ObjectId(storeId), status: 'pending' } },
+            { $match: { franchise: new mongoose.Types.ObjectId(storeId), status: { $in: ['pending', 'processing'] } } },
             { $group: { _id: null, total: { $sum: '$amount' } } }
         ]);
         const pendingWithdrawn = pendingResult.length > 0 ? pendingResult[0].total : 0;
 
         // Correct revenue calculation:
-        // totalEarnings (Gross) = sum of grand_total of all non-cancelled bookings
+        // totalEarnings (Gross) = sum of total_paid of all non-cancelled bookings
         // serviceFee = 8% of gross
         // netEarnings = gross - serviceFee
         const SERVICE_FEE_PERCENT = 8;
-        const totalEarnings = Number(grandTotal.toFixed(2));
+        const totalEarnings = Number(totalRevenue.toFixed(2));
         const serviceFee = Number((totalEarnings * SERVICE_FEE_PERCENT / 100).toFixed(2));
         const netEarnings = Number((totalEarnings - serviceFee).toFixed(2));
+
+        // Dynamically calculate the actual Available Balance
+        const calculatedBalance = netEarnings - totalWithdrawn - pendingWithdrawn;
+        const walletBalance = Number((calculatedBalance > 0 ? calculatedBalance : 0).toFixed(2));
 
         // Fetch list of recent bookings with user/vehicle details
         const recentBookings = await Booking.find({ franchise: storeId, ...dateFilter })
@@ -586,7 +589,7 @@ exports.getFranchiseHistory = async (req, res) => {
                     serviceFee: serviceFee, // Fee
                     totalWithdrawn: totalWithdrawn,
                     pendingWithdrawn: pendingWithdrawn,
-                    walletBalance: store.wallet_balance || 0
+                    walletBalance: walletBalance
                 }
             }
         });

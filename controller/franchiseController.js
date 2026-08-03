@@ -549,8 +549,27 @@ exports.getFranchiseHistory = async (req, res) => {
         const serviceFee = Number((totalEarnings * SERVICE_FEE_PERCENT / 100).toFixed(2));
         const netEarnings = Number((totalEarnings - serviceFee).toFixed(2));
 
-        // Dynamically calculate the actual Available Balance
-        const calculatedBalance = netEarnings - totalWithdrawn - pendingWithdrawn;
+        // Lifetime revenue calculation for accurate wallet balance
+        const lifetimeRevenueStats = await Booking.aggregate([
+            {
+                $match: {
+                    franchise: new mongoose.Types.ObjectId(storeId)
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalRevenue: { $sum: '$total_paid' }
+                }
+            }
+        ]);
+        const lifetimeTotalRevenue = lifetimeRevenueStats.length > 0 ? lifetimeRevenueStats[0].totalRevenue : 0;
+        const lifetimeTotalEarnings = Number(lifetimeTotalRevenue.toFixed(2));
+        const lifetimeServiceFee = Number((lifetimeTotalEarnings * SERVICE_FEE_PERCENT / 100).toFixed(2));
+        const lifetimeNetEarnings = Number((lifetimeTotalEarnings - lifetimeServiceFee).toFixed(2));
+
+        // Dynamically calculate the actual Available Balance (Lifetime Net - Lifetime Withdrawn)
+        const calculatedBalance = lifetimeNetEarnings - totalWithdrawn;
         const walletBalance = Number((calculatedBalance > 0 ? calculatedBalance : 0).toFixed(2));
 
         // Fetch list of recent bookings with user/vehicle details

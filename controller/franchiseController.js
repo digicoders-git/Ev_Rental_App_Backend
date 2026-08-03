@@ -500,6 +500,7 @@ exports.getFranchiseHistory = async (req, res) => {
         // 2. Bookings
         const totalBookings = await Booking.countDocuments({ franchise: storeId, ...dateFilter });
         const pendingBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'pending', ...dateFilter });
+        const confirmedBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'confirmed', ...dateFilter });
         const completedBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'completed', ...dateFilter });
         const ongoingBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'ongoing', ...dateFilter });
         const cancelledBookings = await Booking.countDocuments({ franchise: storeId, booking_status: 'cancelled', ...dateFilter });
@@ -574,7 +575,7 @@ exports.getFranchiseHistory = async (req, res) => {
                 },
                 bookings: {
                     total: totalBookings,
-                    pending: pendingBookings,
+                    pending: pendingBookings + confirmedBookings,
                     completed: completedBookings,
                     ongoing: ongoingBookings,
                     cancelled: cancelledBookings,

@@ -928,7 +928,7 @@ exports.downloadReceipt = async (req, res) => {
         };
 
         if (isInstallment) {
-            allInstallments.forEach(inst => {
+            paidInstallments.forEach(inst => {
                 const isPaid = inst.status === 'paid';
                 const dueStr = inst.due_date ? new Date(inst.due_date).toLocaleDateString('en-IN') : '-';
                 const paidStr = isPaid && inst.paid_date ? new Date(inst.paid_date).toLocaleDateString('en-IN') : (isPaid ? 'Paid' : 'Pending');

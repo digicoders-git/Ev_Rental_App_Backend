@@ -977,18 +977,27 @@ exports.cancelBooking = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Booking not found' });
         }
 
-        // Only allow cancellation if not completed or ongoing
+        // User cannot cancel if the booking is already approved (not pending)
+        if (req.user && req.user.role === 'user' && booking.booking_status !== 'pending') {
+            return res.status(400).json({ success: false, message: 'You cannot cancel a booking that has already been approved.' });
+        }
+
+        // Global check (Admin cannot cancel completed/ongoing)
         if (!['pending', 'confirmed'].includes(booking.booking_status)) {
             return res.status(400).json({ success: false, message: 'Cannot cancel an ongoing or completed booking' });
         }
 
         // Authorization
-        if (booking.user.toString() !== req.user.id && (req.user && req.user.role !== 'admin')) {
-            return res.status(401).json({ success: false, message: 'Not authorized' });
+        const isUserOwner = req.user && req.user.role === 'user' && booking.user.toString() === req.user.id;
+        const isAdmin = req.user && req.user.role === 'admin';
+        const isFranchiseOwner = req.franchise && booking.franchise && booking.franchise.toString() === req.franchise.id;
+
+        if (!isUserOwner && !isAdmin && !isFranchiseOwner) {
+            return res.status(401).json({ success: false, message: 'Not authorized to cancel this booking' });
         }
 
         booking.booking_status = 'cancelled';
-        booking.cancellation_reason = reason || "User cancelled";
+        booking.cancellation_reason = reason || "Cancelled by user or management";
         
         await booking.save();
 
@@ -1025,6 +1034,58 @@ const getDynamicWeeklyRate = (booking, plan) => {
     }
 };
 
+const processExtension = async (booking, weeks) => {
+    // Fully dynamic weekly rate derived from actual booking data
+    let weeklyRate;
+    if (booking.payment_installments && booking.payment_installments.length > 0) {
+        // Get the weekly rate from the most recent installment for perfect accuracy
+        const lastInst = booking.payment_installments[booking.payment_installments.length - 1];
+        weeklyRate = lastInst.amount;
+    } else {
+        weeklyRate = getDynamicWeeklyRate(booking, booking.plan);
+    }
+    const totalExtraCost = weeklyRate * weeks;
+    const currentEnd = new Date(booking.end_date);
+
+    const maxInstNo = (booking.payment_installments || []).reduce(
+        (max, inst) => Math.max(max, inst.installment_no), 0
+    );
+
+    // One installment per week — due dates are sequential from current end_date
+    for (let i = 0; i < weeks; i++) {
+        booking.payment_installments.push({
+            installment_no: maxInstNo + i + 1,
+            amount: weeklyRate,
+            due_date: new Date(currentEnd.getTime() + i * 7 * 24 * 60 * 60 * 1000),
+            status: 'pending'
+        });
+    }
+
+    currentEnd.setDate(currentEnd.getDate() + weeks * 7);
+    booking.end_date = currentEnd;
+    booking.total_amount += totalExtraCost;
+    booking.grand_total += totalExtraCost;
+
+    if (booking.grand_total > booking.total_paid) {
+        booking.payment_status = booking.total_paid > 0 ? 'partially_paid' : 'pending';
+    }
+
+    await booking.save();
+
+    await sendNotification({
+        recipient: booking.user,
+        recipient_role: 'user',
+        title: '📅 Plan Extended',
+        message: `Your booking #${booking.booking_id} has been extended by ${weeks} week${weeks > 1 ? 's' : ''}. ${weeks} new weekly installment${weeks > 1 ? 's' : ''} of ₹${weeklyRate} each added.`,
+        type: 'booking',
+        related_id: booking._id,
+    });
+
+    return { weeklyRate, totalExtraCost };
+};
+
+exports.processExtensionInternal = processExtension;
+
 // @desc    Extend Booking — Weekly wise, fully dynamic installments
 // @route   POST /api/bookings/:id/extend
 // @access  Private (Admin / Franchise)
@@ -1045,53 +1106,10 @@ exports.extendBooking = async (req, res) => {
 
         if (auto_renew !== undefined) {
             booking.auto_renew = auto_renew === true || auto_renew === 'true';
+            await booking.save(); // Save the auto_renew flag even if it's already saved by processExtension
         }
 
-        // Fully dynamic weekly rate derived from actual booking data
-        let weeklyRate;
-        if (booking.payment_installments && booking.payment_installments.length > 0) {
-            // Get the weekly rate from the most recent installment for perfect accuracy
-            const lastInst = booking.payment_installments[booking.payment_installments.length - 1];
-            weeklyRate = lastInst.amount;
-        } else {
-            weeklyRate = getDynamicWeeklyRate(booking, booking.plan);
-        }
-        const totalExtraCost = weeklyRate * weeks;
-        const currentEnd = new Date(booking.end_date);
-
-        const maxInstNo = (booking.payment_installments || []).reduce(
-            (max, inst) => Math.max(max, inst.installment_no), 0
-        );
-
-        // One installment per week — due dates are sequential from current end_date
-        for (let i = 0; i < weeks; i++) {
-            booking.payment_installments.push({
-                installment_no: maxInstNo + i + 1,
-                amount: weeklyRate,
-                due_date: new Date(currentEnd.getTime() + i * 7 * 24 * 60 * 60 * 1000),
-                status: 'pending'
-            });
-        }
-
-        currentEnd.setDate(currentEnd.getDate() + weeks * 7);
-        booking.end_date = currentEnd;
-        booking.total_amount += totalExtraCost;
-        booking.grand_total += totalExtraCost;
-
-        if (booking.grand_total > booking.total_paid) {
-            booking.payment_status = booking.total_paid > 0 ? 'partially_paid' : 'pending';
-        }
-
-        await booking.save();
-
-        await sendNotification({
-            recipient: booking.user,
-            recipient_role: 'user',
-            title: '📅 Plan Extended',
-            message: `Your booking #${booking.booking_id} has been extended by ${weeks} week${weeks > 1 ? 's' : ''}. ${weeks} new weekly installment${weeks > 1 ? 's' : ''} of ₹${weeklyRate} each added.`,
-            type: 'booking',
-            related_id: booking._id,
-        });
+        const { weeklyRate, totalExtraCost } = await processExtension(booking, weeks);
 
         res.status(200).json({
             success: true,

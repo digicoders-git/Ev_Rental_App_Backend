@@ -58,8 +58,19 @@ router.get('/:id', anyProtect, getBookingById);
 router.get('/:id/calculate-late-fee', anyProtect, calculateLateFee);
 router.post('/:id/return', anyProtect, returnVehicle);
 router.get('/:id/receipt', anyProtect, downloadReceipt);
-router.post('/:id/cancel', protect, cancelBooking);
+router.post('/:id/cancel', anyProtect, cancelBooking);
 router.post('/:id/extend', anyProtect, extendBooking);
+
+// TEST ROUTE FOR AUTO RENEW
+const { runAutoRenewLogic } = require('../cron/autoRenew');
+router.get('/test/auto-renew', async (req, res) => {
+    try {
+        const result = await runAutoRenewLogic();
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // Admin & Management
 router.get('/', anyProtect, getAllBookings);

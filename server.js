@@ -18,6 +18,9 @@ connectDB();
 const { startSettlementCron } = require('./utils/settlementCron');
 startSettlementCron();
 
+// Start Auto-Renew cron
+require('./cron/autoRenew');
+
 
 const app = express();
 const server = http.createServer(app);

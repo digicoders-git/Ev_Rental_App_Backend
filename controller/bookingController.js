@@ -1026,7 +1026,14 @@ exports.extendBooking = async (req, res) => {
         }
 
         // Fully dynamic weekly rate derived from actual booking data
-        const weeklyRate = getDynamicWeeklyRate(booking, booking.plan);
+        let weeklyRate;
+        if (booking.payment_installments && booking.payment_installments.length > 0) {
+            // Get the weekly rate from the most recent installment for perfect accuracy
+            const lastInst = booking.payment_installments[booking.payment_installments.length - 1];
+            weeklyRate = lastInst.amount;
+        } else {
+            weeklyRate = getDynamicWeeklyRate(booking, booking.plan);
+        }
         const totalExtraCost = weeklyRate * weeks;
         const currentEnd = new Date(booking.end_date);
 

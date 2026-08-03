@@ -100,7 +100,7 @@ exports.getAllInvoices = async (req, res) => {
                         booking: booking._id,
                         user: booking.user,
                         franchise: booking.franchise || null,
-                        amount: booking.payment_method === 'installments' ? booking.total_paid : booking.total_amount,
+                        amount: booking.payment_method === 'installments' ? booking.total_paid : booking.grand_total,
                         gst_amount: booking.payment_method === 'installments' ? 0 : (booking.gst_amount || 0),
                         discount_amount: booking.payment_method === 'installments' ? 0 : (booking.discount_amount || 0),
                         total_amount: booking.payment_method === 'installments' ? booking.total_paid : booking.grand_total,
@@ -304,7 +304,7 @@ exports.syncMasterInvoiceForBooking = async (booking) => {
                 booking: booking._id,
                 user: booking.user,
                 franchise: booking.franchise,
-                amount: booking.total_amount,
+                amount: booking.grand_total,
                 gst_amount: booking.gst_amount,
                 discount_amount: booking.discount_amount,
                 total_amount: booking.grand_total,
@@ -313,7 +313,7 @@ exports.syncMasterInvoiceForBooking = async (booking) => {
         } else {
             const currentStatus = booking.payment_status === 'paid' ? 'paid' : 'unpaid';
             if (masterInvoice.total_amount !== booking.grand_total || masterInvoice.status !== currentStatus) {
-                masterInvoice.amount = booking.total_amount;
+                masterInvoice.amount = booking.grand_total;
                 masterInvoice.gst_amount = booking.gst_amount;
                 masterInvoice.discount_amount = booking.discount_amount;
                 masterInvoice.total_amount = booking.grand_total;

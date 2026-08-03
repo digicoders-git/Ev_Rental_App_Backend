@@ -192,6 +192,16 @@ exports.createBooking = async (req, res) => {
             auto_renew: true // Defaulted to true so auto-renew works automatically
         });
 
+        // Immediately generate a master invoice so it's available in the My Invoices screen
+        try {
+            const invoiceController = require('./invoiceController');
+            if (invoiceController && invoiceController.syncMasterInvoiceForBooking) {
+                await invoiceController.syncMasterInvoiceForBooking(booking);
+            }
+        } catch (invErr) {
+            console.error('Error auto-generating master invoice:', invErr);
+        }
+
         // Notify Admin
         await sendNotification({
             title: 'New Booking Created',

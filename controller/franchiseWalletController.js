@@ -76,16 +76,8 @@ exports.requestWithdrawal = async (req, res) => {
             amount
         });
 
-        // Deduct from wallet balance immediately
-        franchise.wallet_balance -= amount;
-        await franchise.save();
-
-        await FranchiseWalletTransaction.create({
-            franchise: franchiseId,
-            amount: amount,
-            type: 'debit',
-            description: `Withdrawal Requested (${withdrawal.withdrawal_id})`
-        });
+        // Payment is NOT deducted immediately. It will be deducted when admin approves it.
+        // as per user requirement.
 
         const admins = await User.find({ role: 'admin' });
         for (const admin of admins) {
@@ -396,33 +388,32 @@ exports.updateWithdrawalStatusAdmin = async (req, res) => {
         }
 
         const oldStatus = withdrawal.status;
-        withdrawal.status = status;
-        withdrawal.admin_note = admin_note || withdrawal.admin_note;
-
-        if (req.file) {
-            withdrawal.payment_proof = `/uploads/${req.file.filename}`;
-        }
-
-        await withdrawal.save();
-
         const franchise = await FranchiseStore.findById(withdrawal.franchise);
 
-        // Emit real-time event to franchise
-        const io = req.app.get('io');
-        if (io && franchise) {
-            io.to(franchise._id.toString()).emit('withdrawal_status_updated', {
-                withdrawalId: withdrawal._id,
-                status: withdrawal.status,
-                admin_note: withdrawal.admin_note,
-                payment_proof: withdrawal.payment_proof || null
+        const isApprovedState = ['approved', 'released'].includes(status);
+        const wasNotApprovedState = !['approved', 'released'].includes(oldStatus);
+
+        const isFailedState = ['failed', 'rejected'].includes(status);
+        const wasApprovedState = ['approved', 'released'].includes(oldStatus);
+
+        // If moving to an approved state, deduct the balance
+        if (isApprovedState && wasNotApprovedState && franchise) {
+            if (franchise.wallet_balance < withdrawal.amount) {
+                return res.status(400).json({ success: false, message: 'Franchise does not have enough balance for this withdrawal' });
+            }
+            franchise.wallet_balance -= withdrawal.amount;
+            await franchise.save();
+
+            await FranchiseWalletTransaction.create({
+                franchise: franchise._id,
+                amount: withdrawal.amount,
+                type: 'debit',
+                description: `Withdrawal Approved (${withdrawal.withdrawal_id})`
             });
         }
 
-        // Handle refund if moving to a failed/rejected state from a previously deducted state
-        const isFailedState = ['failed', 'rejected'].includes(status);
-        const wasNotFailedState = !['failed', 'rejected'].includes(oldStatus);
-
-        if (isFailedState && wasNotFailedState && franchise) {
+        // If moving from an approved state back to a failed state, refund the balance
+        if (isFailedState && wasApprovedState && franchise) {
             franchise.wallet_balance += withdrawal.amount;
             await franchise.save();
 
@@ -433,22 +424,25 @@ exports.updateWithdrawalStatusAdmin = async (req, res) => {
                 description: `Settlement Failed Refund (${withdrawal.withdrawal_id})`
             });
         }
-        
-        // Handle deducting if moving from failed to a valid state
-        if (!isFailedState && !wasNotFailedState && franchise) {
-             if (franchise.wallet_balance >= withdrawal.amount) {
-                 franchise.wallet_balance -= withdrawal.amount;
-                 await franchise.save();
 
-                 await FranchiseWalletTransaction.create({
-                     franchise: franchise._id,
-                     amount: withdrawal.amount,
-                     type: 'debit',
-                     description: `Settlement Re-initiated (${withdrawal.withdrawal_id})`
-                 });
-             } else {
-                 return res.status(400).json({ success: false, message: 'Franchise does not have enough balance to retry this settlement' });
-             }
+        withdrawal.status = status;
+        withdrawal.admin_note = admin_note || withdrawal.admin_note;
+
+        if (req.file) {
+            withdrawal.payment_proof = `/uploads/${req.file.filename}`;
+        }
+
+        await withdrawal.save();
+
+        // Emit real-time event to franchise
+        const io = req.app.get('io');
+        if (io && franchise) {
+            io.to(franchise._id.toString()).emit('withdrawal_status_updated', {
+                withdrawalId: withdrawal._id,
+                status: withdrawal.status,
+                admin_note: withdrawal.admin_note,
+                payment_proof: withdrawal.payment_proof || null
+            });
         }
 
         if (franchise) {

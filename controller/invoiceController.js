@@ -244,18 +244,23 @@ exports.downloadInvoicePDF = async (req, res) => {
         };
 
         if (isInstallment) {
-            // Show only paid installment history
-            paidInstallments.forEach(inst => {
-                const isPaid = inst.status === 'paid';
-                const dueStr = inst.due_date ? new Date(inst.due_date).toLocaleDateString('en-IN') : '-';
-                const paidStr = isPaid && inst.paid_date ? new Date(inst.paid_date).toLocaleDateString('en-IN') : (isPaid ? 'Paid' : 'Pending');
-                const isCurrentInst = inst._id && invoice.installment_id && inst._id.toString() === invoice.installment_id.toString();
-                const gst = Number(inst.amount) * 18 / 118;
-                const rent = Number(inst.amount) - gst;
+            // Show only the specific installment for this invoice
+            const currentInst = paidInstallments.find(inst => inst._id && invoice.installment_id && inst._id.toString() === invoice.installment_id.toString());
+            
+            if (currentInst) {
+                const gst = Number(currentInst.amount) * 18 / 118;
+                const rent = Number(currentInst.amount) - gst;
                 const gstVal = 'INR ' + gst.toFixed(2);
                 const rentVal = 'INR ' + rent.toFixed(2);
-                drawRow('Week ' + inst.installment_no + (isCurrentInst ? ' - Installment (This Payment)' : ' - Installment'), dueStr, paidStr, rentVal, gstVal, inst.amount, isPaid);
-            });
+                const dueStr = currentInst.due_date ? new Date(currentInst.due_date).toLocaleDateString('en-IN') : '-';
+                const paidStr = currentInst.paid_date ? new Date(currentInst.paid_date).toLocaleDateString('en-IN') : 'Paid';
+                
+                drawRow('Week ' + currentInst.installment_no + ' - Installment', dueStr, paidStr, rentVal, gstVal, currentInst.amount, true);
+            } else {
+                const gst = Number(invoice.amount) * 18 / 118;
+                const rent = Number(invoice.amount) - gst;
+                drawRow('Installment Payment', '-', new Date(invoice.createdAt).toLocaleDateString('en-IN'), 'INR ' + rent.toFixed(2), 'INR ' + gst.toFixed(2), invoice.amount, true);
+            }
         } else {
             const planName = booking && booking.plan ? booking.plan.plan_name : 'Rental Plan';
             const gst = Number(invoice.amount) * 18 / 118;
@@ -269,23 +274,10 @@ exports.downloadInvoicePDF = async (req, res) => {
 
         // Summary Box
         currentY += 10;
-        if (isInstallment) {
-            const totalPaid = paidInstallments.reduce((s, i) => s + i.amount, 0);
-            const totalPending = pendingInstallments.reduce((s, i) => s + i.amount, 0);
-            doc.rect(50, currentY, pageWidth - 100, 80).fill('#F8F9FA');
-            doc.font('Helvetica-Bold').fillColor('#333333').fontSize(11);
-            doc.text('Total Paid:', 70, currentY + 12);
-            doc.fillColor('#10b981').text('INR ' + totalPaid.toFixed(2), 200, currentY + 12);
-            doc.fillColor('#333333').text('Remaining Due:', 70, currentY + 32);
-            doc.fillColor('#ef4444').text('INR ' + totalPending.toFixed(2), 200, currentY + 32);
-            doc.fillColor('#333333').text('Grand Total:', 70, currentY + 52);
-            doc.fillColor('#1d4ed8').text('INR ' + (booking && booking.grand_total ? booking.grand_total.toFixed(2) : invoice.total_amount.toFixed(2)), 200, currentY + 52);
-        } else {
-            doc.rect(380, currentY, 170, 40).fill('#F8F9FA');
-            doc.font('Helvetica-Bold').fillColor('#333333').fontSize(14);
-            doc.text('TOTAL PAID:', 395, currentY + 14);
-            doc.fillColor('#10b981').text('INR ' + invoice.total_amount.toFixed(2), 470, currentY + 14, { width: 70, align: 'right' });
-        }
+        doc.rect(380, currentY, 170, 40).fill('#F8F9FA');
+        doc.font('Helvetica-Bold').fillColor('#333333').fontSize(14);
+        doc.text('INVOICE TOTAL:', 395, currentY + 15);
+        doc.fillColor('#10b981').text('INR ' + Number(invoice.amount).toFixed(2), 470, currentY + 15, { width: 70, align: 'right' });
 
         // Footer
         const footerY = pageHeight - 80;

@@ -910,17 +910,19 @@ exports.downloadReceipt = async (req, res) => {
         doc.rect(50, tableTop, pageWidth - 100, 35).fill('#333333');
         doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(11);
         doc.text('DESCRIPTION', 70, tableTop + 12);
-        doc.text('DUE DATE', 280, tableTop + 12);
-        doc.text('PAID DATE', 380, tableTop + 12);
+        doc.text('DUE DATE', 250, tableTop + 12);
+        doc.text('PAID DATE', 330, tableTop + 12);
+        doc.text('GST (5%)', 410, tableTop + 12);
         doc.text('AMOUNT', 480, tableTop + 12, { width: 60, align: 'right' });
 
         let currentY = tableTop + 55;
 
-        const drawRow = (desc, dueDate, paidDate, amount, isPaid) => {
+        const drawRow = (desc, dueDate, paidDate, gstStr, amount, isPaid) => {
             doc.font('Helvetica').fillColor(isPaid ? '#166534' : '#92400e').fontSize(10);
-            doc.text(desc, 70, currentY, { width: 200 });
-            doc.fillColor('#666666').text(dueDate, 280, currentY, { width: 95 });
-            doc.text(paidDate, 380, currentY, { width: 95 });
+            doc.text(desc, 70, currentY, { width: 170 });
+            doc.fillColor('#666666').text(dueDate, 250, currentY, { width: 70 });
+            doc.text(paidDate, 330, currentY, { width: 70 });
+            doc.text(gstStr, 410, currentY, { width: 60 });
             doc.fillColor(isPaid ? '#10b981' : '#f59e0b').font('Helvetica-Bold')
                .text('INR ' + Number(amount).toFixed(2), 480, currentY, { width: 60, align: 'right' });
             doc.moveTo(50, currentY + 22).lineTo(pageWidth - 50, currentY + 22).strokeColor('#EEEEEE').lineWidth(1).stroke();
@@ -932,15 +934,17 @@ exports.downloadReceipt = async (req, res) => {
                 const isPaid = inst.status === 'paid';
                 const dueStr = inst.due_date ? new Date(inst.due_date).toLocaleDateString('en-IN') : '-';
                 const paidStr = isPaid && inst.paid_date ? new Date(inst.paid_date).toLocaleDateString('en-IN') : (isPaid ? 'Paid' : 'Pending');
-                drawRow('Week ' + inst.installment_no + ' - Installment', dueStr, paidStr, inst.amount, isPaid);
+                const gstVal = 'INR ' + (Number(inst.amount) * 5 / 105).toFixed(2);
+                drawRow('Week ' + inst.installment_no + ' - Installment', dueStr, paidStr, gstVal, inst.amount, isPaid);
             });
         } else {
             const planName = booking.plan ? booking.plan.plan_name : 'Rental Plan';
-            drawRow('EV Rental - ' + planName, new Date(booking.start_date).toLocaleDateString('en-IN'), new Date().toLocaleDateString('en-IN'), booking.total_amount || 0, true);
-            if ((booking.gst_amount || 0) > 0) drawRow('GST (5%)', '-', '-', booking.gst_amount, true);
-            if (booking.security_deposit > 0) drawRow('Security Deposit', '-', '-', booking.security_deposit, true);
-            if (booking.late_fee > 0) drawRow('Late Fee', '-', '-', booking.late_fee, false);
-            if ((booking.discount_amount || 0) > 0) drawRow('Discount Applied', '-', '-', -booking.discount_amount, true);
+            const gstVal = 'INR ' + (Number(booking.total_amount || 0) * 5 / 105).toFixed(2);
+            drawRow('EV Rental - ' + planName, new Date(booking.start_date).toLocaleDateString('en-IN'), new Date().toLocaleDateString('en-IN'), gstVal, booking.total_amount || 0, true);
+            if ((booking.gst_amount || 0) > 0) drawRow('GST (5%)', '-', '-', '-', booking.gst_amount, true);
+            if (booking.security_deposit > 0) drawRow('Security Deposit', '-', '-', '-', booking.security_deposit, true);
+            if (booking.late_fee > 0) drawRow('Late Fee', '-', '-', '-', booking.late_fee, false);
+            if ((booking.discount_amount || 0) > 0) drawRow('Discount Applied', '-', '-', '-', -booking.discount_amount, true);
         }
 
         // Summary Box

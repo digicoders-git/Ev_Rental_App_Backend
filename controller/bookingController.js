@@ -11,6 +11,7 @@ const path = require('path');
 const crypto = require('crypto');
 const Razorpay = require('razorpay');
 const { sendNotification } = require('../utils/notificationHelper');
+const { sendPushNotification } = require('../utils/fcmHelper');
 
 // @desc    Create new Booking
 // @route   POST /api/bookings
@@ -1112,13 +1113,17 @@ const processExtension = async (booking, extensionUnits) => {
     await booking.save();
 
     await sendNotification({
-        recipient: booking.user,
+        recipient: booking.user._id || booking.user,
         recipient_role: 'user',
         title: '📅 Plan Extended',
         message: `Your booking #${booking.booking_id} has been extended by ${extensionUnits} ${unitName}${extensionUnits > 1 ? 's' : ''}. ${extensionUnits} new installment${extensionUnits > 1 ? 's' : ''} of ₹${unitRate} each added.`,
         type: 'booking',
         related_id: booking._id,
     });
+
+    if (booking.user && booking.user.fcm_token) {
+        await sendPushNotification(booking.user.fcm_token, '📅 Plan Extended', `Your booking #${booking.booking_id} has been extended by ${extensionUnits} ${unitName}.`, { type: 'booking', related_id: booking._id.toString() }).catch(e => console.log('FCM Error:', e));
+    }
 
     return { unitRate, totalExtraCost, unitName };
 };

@@ -221,20 +221,22 @@ exports.downloadInvoicePDF = async (req, res) => {
         const tableTop = 200;
         doc.rect(50, tableTop, pageWidth - 100, 35).fill('#333333');
         doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(11);
-        doc.text('DESCRIPTION', 70, tableTop + 12);
-        doc.text('DUE DATE', 250, tableTop + 12);
-        doc.text('PAID DATE', 330, tableTop + 12);
-        doc.text('GST (5%)', 410, tableTop + 12);
-        doc.text('AMOUNT', 480, tableTop + 12, { width: 60, align: 'right' });
+        doc.text('DESCRIPTION', 60, tableTop + 12);
+        doc.text('DUE DATE', 210, tableTop + 12);
+        doc.text('PAID DATE', 280, tableTop + 12);
+        doc.text('RENT', 360, tableTop + 12);
+        doc.text('GST (5%)', 420, tableTop + 12);
+        doc.text('TOTAL', 480, tableTop + 12, { width: 60, align: 'right' });
 
         let currentY = tableTop + 55;
 
-        const drawRow = (desc, dueDate, paidDate, gstStr, amount, isPaid) => {
+        const drawRow = (desc, dueDate, paidDate, rentStr, gstStr, amount, isPaid) => {
             doc.font('Helvetica').fillColor(isPaid ? '#166534' : '#92400e').fontSize(10);
-            doc.text(desc, 70, currentY, { width: 170 });
-            doc.fillColor('#666666').text(dueDate, 250, currentY, { width: 70 });
-            doc.text(paidDate, 330, currentY, { width: 70 });
-            doc.text(gstStr, 410, currentY, { width: 60 });
+            doc.text(desc, 60, currentY, { width: 140 });
+            doc.fillColor('#666666').text(dueDate, 210, currentY, { width: 60 });
+            doc.text(paidDate, 280, currentY, { width: 70 });
+            doc.text(rentStr, 360, currentY, { width: 50 });
+            doc.text(gstStr, 420, currentY, { width: 50 });
             doc.fillColor(isPaid ? '#10b981' : '#f59e0b').font('Helvetica-Bold')
                .text('INR ' + Number(amount).toFixed(2), 480, currentY, { width: 60, align: 'right' });
             doc.moveTo(50, currentY + 22).lineTo(pageWidth - 50, currentY + 22).strokeColor('#EEEEEE').lineWidth(1).stroke();
@@ -248,15 +250,21 @@ exports.downloadInvoicePDF = async (req, res) => {
                 const dueStr = inst.due_date ? new Date(inst.due_date).toLocaleDateString('en-IN') : '-';
                 const paidStr = isPaid && inst.paid_date ? new Date(inst.paid_date).toLocaleDateString('en-IN') : (isPaid ? 'Paid' : 'Pending');
                 const isCurrentInst = inst._id && invoice.installment_id && inst._id.toString() === invoice.installment_id.toString();
-                const gstVal = 'INR ' + (Number(inst.amount) * 5 / 105).toFixed(2);
-                drawRow('Week ' + inst.installment_no + (isCurrentInst ? ' - Installment (This Payment)' : ' - Installment'), dueStr, paidStr, gstVal, inst.amount, isPaid);
+                const gst = Number(inst.amount) * 5 / 105;
+                const rent = Number(inst.amount) - gst;
+                const gstVal = 'INR ' + gst.toFixed(2);
+                const rentVal = 'INR ' + rent.toFixed(2);
+                drawRow('Week ' + inst.installment_no + (isCurrentInst ? ' - Installment (This Payment)' : ' - Installment'), dueStr, paidStr, rentVal, gstVal, inst.amount, isPaid);
             });
         } else {
             const planName = booking && booking.plan ? booking.plan.plan_name : 'Rental Plan';
-            const gstVal = 'INR ' + (Number(invoice.amount) * 5 / 105).toFixed(2);
-            drawRow('EV Rental - ' + planName + ' (Booking #' + (booking && booking.booking_id ? booking.booking_id : '') + ')', '-', new Date(invoice.createdAt).toLocaleDateString('en-IN'), gstVal, invoice.amount, true);
-            if (invoice.gst_amount > 0) drawRow('GST', '-', '-', '-', invoice.gst_amount, true);
-            if (invoice.discount_amount > 0) drawRow('Discount Applied', '-', '-', '-', -invoice.discount_amount, true);
+            const gst = Number(invoice.amount) * 5 / 105;
+            const rent = Number(invoice.amount) - gst;
+            const gstVal = 'INR ' + gst.toFixed(2);
+            const rentVal = 'INR ' + rent.toFixed(2);
+            drawRow('EV Rental - ' + planName + ' (Booking #' + (booking && booking.booking_id ? booking.booking_id : '') + ')', '-', new Date(invoice.createdAt).toLocaleDateString('en-IN'), rentVal, gstVal, invoice.amount, true);
+            if (invoice.gst_amount > 0) drawRow('GST', '-', '-', '-', '-', invoice.gst_amount, true);
+            if (invoice.discount_amount > 0) drawRow('Discount Applied', '-', '-', '-', '-', -invoice.discount_amount, true);
         }
 
         // Summary Box

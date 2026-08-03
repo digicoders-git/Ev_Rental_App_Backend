@@ -34,8 +34,8 @@ const runAutoRenewLogic = async () => {
 
                 console.log(`🔄 Auto-renewing booking ${booking.booking_id}...`);
                 
-                // Extend by 1 week
-                const { weeklyRate, totalExtraCost } = await processExtensionInternal(booking, 1);
+                // Extend by 1 unit
+                const { unitRate, totalExtraCost, unitName } = await processExtensionInternal(booking, 1);
                 
                 console.log(`✅ Booking ${booking.booking_id} auto-renewed successfully. Added ${totalExtraCost}`);
                 renewedCount++;
@@ -53,7 +53,7 @@ const runAutoRenewLogic = async () => {
                         recipient: admin._id,
                         recipient_role: 'admin',
                         title: '🔄 Booking Auto-Renewed',
-                        message: `Booking #${booking.booking_id} for ${booking.user.name || 'User'} has been automatically renewed for 1 week at exactly ₹${weeklyRate}.`,
+                        message: `Booking #${booking.booking_id} for ${booking.user.name || 'User'} has been automatically renewed for 1 ${unitName} at exactly ₹${unitRate}.`,
                         type: 'booking',
                         related_id: booking._id,
                     });
@@ -65,7 +65,7 @@ const runAutoRenewLogic = async () => {
                         recipient: booking.franchise,
                         recipient_role: 'franchise',
                         title: '🔄 Booking Auto-Renewed',
-                        message: `Booking #${booking.booking_id} for your store has been automatically renewed for 1 week.`,
+                        message: `Booking #${booking.booking_id} for your store has been automatically renewed for 1 ${unitName}.`,
                         type: 'booking',
                         related_id: booking._id,
                     });
@@ -81,6 +81,6 @@ const runAutoRenewLogic = async () => {
     }
 };
 
-const autoRenewJob = cron.schedule('1 0 * * *', runAutoRenewLogic);
+const autoRenewJob = cron.schedule('* * * * *', runAutoRenewLogic);
 
 module.exports = { autoRenewJob, runAutoRenewLogic };

@@ -87,7 +87,10 @@ exports.createBooking = async (req, res) => {
         const durationMs = tmpEnd - tmpStart;
         
         let calculatedTotal = planData.price;
-        if (planData.pricing_type === 'hourly') {
+        if (planData.pricing_type === 'minute') {
+            let minutes = Math.ceil(durationMs / (60 * 1000));
+            calculatedTotal = planData.price * (minutes > 0 ? minutes : 1);
+        } else if (planData.pricing_type === 'hourly') {
             let hours = Math.ceil(durationMs / (60 * 60 * 1000));
             calculatedTotal = planData.price * (hours > 0 ? hours : 1);
         } else if (planData.pricing_type === 'daily') {
@@ -140,19 +143,25 @@ exports.createBooking = async (req, res) => {
             const start = new Date(start_date);
             const end = new Date(end_date);
             
-            // Calculate weeks (minimum 1 week)
-            let weeks = Math.ceil((end - start) / (7 * 24 * 60 * 60 * 1000));
-            if (weeks < 1) weeks = 1;
+            let unitMs = 7 * 24 * 60 * 60 * 1000;
+            if (planData.pricing_type === 'minute') unitMs = 60 * 1000;
+            else if (planData.pricing_type === 'hourly') unitMs = 60 * 60 * 1000;
+            else if (planData.pricing_type === 'daily') unitMs = 24 * 60 * 60 * 1000;
+            else if (planData.pricing_type === 'monthly') unitMs = 30 * 24 * 60 * 60 * 1000;
+
+            // Calculate units (minimum 1 unit)
+            let units = Math.ceil((end - start) / unitMs);
+            if (units < 1) units = 1;
             
-            // Allow frontend to override weeks with installmentsCount if provided
-            const requestedCount = req.body.installmentsCount ? parseInt(req.body.installmentsCount) : weeks;
+            // Allow frontend to override units with installmentsCount if provided
+            const requestedCount = req.body.installmentsCount ? parseInt(req.body.installmentsCount) : units;
             const finalCount = requestedCount > 0 ? requestedCount : 1;
 
             const baseAmount = Math.floor(grand_total / finalCount);
             const remainder = grand_total - (baseAmount * finalCount);
 
             for (let i = 0; i < finalCount; i++) {
-                const dueDate = new Date(start.getTime() + (i * 7 * 24 * 60 * 60 * 1000));
+                const dueDate = new Date(start.getTime() + (i * unitMs));
                 payment_installments.push({
                     installment_no: i + 1,
                     amount: i === 0 ? baseAmount + remainder : baseAmount, // Add remainder to first installment
@@ -1034,34 +1043,63 @@ const getDynamicWeeklyRate = (booking, plan) => {
     }
 };
 
-const processExtension = async (booking, weeks) => {
-    // Fully dynamic weekly rate derived from actual booking data
-    let weeklyRate;
-    if (booking.payment_installments && booking.payment_installments.length > 0) {
-        // Get the weekly rate from the most recent installment for perfect accuracy
-        const lastInst = booking.payment_installments[booking.payment_installments.length - 1];
-        weeklyRate = lastInst.amount;
-    } else {
-        weeklyRate = getDynamicWeeklyRate(booking, booking.plan);
+const processExtension = async (booking, extensionUnits) => {
+    const plan = booking.plan;
+    let unitMs = 7 * 24 * 60 * 60 * 1000;
+    let unitName = "week";
+    
+    if (plan.pricing_type === 'minute') {
+        unitMs = 60 * 1000;
+        unitName = "minute";
+    } else if (plan.pricing_type === 'hourly') {
+        unitMs = 60 * 60 * 1000;
+        unitName = "hour";
+    } else if (plan.pricing_type === 'daily') {
+        unitMs = 24 * 60 * 60 * 1000;
+        unitName = "day";
+    } else if (plan.pricing_type === 'monthly') {
+        unitMs = 30 * 24 * 60 * 60 * 1000;
+        unitName = "month";
     }
-    const totalExtraCost = weeklyRate * weeks;
+
+    // Step 1: Derive the exact unit rate from the original booking
+    const originalMs = new Date(booking.end_date) - new Date(booking.start_date);
+    const originalUnits = originalMs / unitMs;
+
+    let unitRate = 0;
+    if (originalUnits >= 0.5 && booking.total_amount > 0) {
+        const inclusiveTotal = booking.total_amount + (booking.gst_amount || 0);
+        unitRate = Math.round(inclusiveTotal / originalUnits);
+    }
+
+    // Step 2: Fallback to base plan price if original booking is too short or weird
+    if (unitRate <= 0) {
+        if (plan.pricing_type === 'weekly') unitRate = Math.round(plan.price);
+        else if (plan.pricing_type === 'monthly') unitRate = Math.round(plan.price);
+        else if (plan.pricing_type === 'daily') unitRate = Math.round(plan.price);
+        else if (plan.pricing_type === 'hourly') unitRate = Math.round(plan.price);
+        else if (plan.pricing_type === 'minute') unitRate = Math.round(plan.price);
+        else unitRate = Math.round(plan.price);
+    }
+
+    const totalExtraCost = unitRate * extensionUnits;
     const currentEnd = new Date(booking.end_date);
 
     const maxInstNo = (booking.payment_installments || []).reduce(
         (max, inst) => Math.max(max, inst.installment_no), 0
     );
 
-    // One installment per week — due dates are sequential from current end_date
-    for (let i = 0; i < weeks; i++) {
+    // One installment per unit — due dates are sequential
+    for (let i = 0; i < extensionUnits; i++) {
         booking.payment_installments.push({
             installment_no: maxInstNo + i + 1,
-            amount: weeklyRate,
-            due_date: new Date(currentEnd.getTime() + i * 7 * 24 * 60 * 60 * 1000),
+            amount: unitRate,
+            due_date: new Date(currentEnd.getTime() + i * unitMs),
             status: 'pending'
         });
     }
 
-    currentEnd.setDate(currentEnd.getDate() + weeks * 7);
+    currentEnd.setTime(currentEnd.getTime() + (extensionUnits * unitMs));
     booking.end_date = currentEnd;
     booking.total_amount += totalExtraCost;
     booking.grand_total += totalExtraCost;
@@ -1076,12 +1114,12 @@ const processExtension = async (booking, weeks) => {
         recipient: booking.user,
         recipient_role: 'user',
         title: '📅 Plan Extended',
-        message: `Your booking #${booking.booking_id} has been extended by ${weeks} week${weeks > 1 ? 's' : ''}. ${weeks} new weekly installment${weeks > 1 ? 's' : ''} of ₹${weeklyRate} each added.`,
+        message: `Your booking #${booking.booking_id} has been extended by ${extensionUnits} ${unitName}${extensionUnits > 1 ? 's' : ''}. ${extensionUnits} new installment${extensionUnits > 1 ? 's' : ''} of ₹${unitRate} each added.`,
         type: 'booking',
         related_id: booking._id,
     });
 
-    return { weeklyRate, totalExtraCost };
+    return { unitRate, totalExtraCost, unitName };
 };
 
 exports.processExtensionInternal = processExtension;
@@ -1109,13 +1147,16 @@ exports.extendBooking = async (req, res) => {
             await booking.save(); // Save the auto_renew flag even if it's already saved by processExtension
         }
 
-        const { weeklyRate, totalExtraCost } = await processExtension(booking, weeks);
+        const { unitRate, totalExtraCost, unitName } = await processExtension(booking, weeks);
 
         res.status(200).json({
             success: true,
-            message: `Booking extended by ${weeks} week${weeks > 1 ? 's' : ''}. ${weeks} installment${weeks > 1 ? 's' : ''} of ₹${weeklyRate} each added.`,
-            weekly_rate: weeklyRate,
+            message: `Booking extended by ${weeks} ${unitName}${weeks > 1 ? 's' : ''}. ${weeks} installment${weeks > 1 ? 's' : ''} of ₹${unitRate} each added.`,
+            weekly_rate: unitRate, // Kept for backwards compatibility
+            unit_rate: unitRate,
+            unit_name: unitName,
             weeks_added: weeks,
+            units_added: weeks,
             total_extra_cost: totalExtraCost,
             new_end_date: booking.end_date,
             new_installments: booking.payment_installments.slice(-weeks),

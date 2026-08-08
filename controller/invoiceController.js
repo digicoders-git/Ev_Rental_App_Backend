@@ -225,7 +225,7 @@ exports.downloadInvoicePDF = async (req, res) => {
         doc.text('DUE DATE', 210, tableTop + 12);
         doc.text('PAID DATE', 280, tableTop + 12);
         doc.text('RENT', 360, tableTop + 12);
-        doc.text('GST (18%)', 420, tableTop + 12);
+        doc.text('GST (5%)', 420, tableTop + 12);
         doc.text('TOTAL', 480, tableTop + 12, { width: 60, align: 'right' });
 
         let currentY = tableTop + 55;
@@ -248,7 +248,7 @@ exports.downloadInvoicePDF = async (req, res) => {
             const currentInst = paidInstallments.find(inst => inst._id && invoice.installment_id && inst._id.toString() === invoice.installment_id.toString());
             
             if (currentInst) {
-                const gst = Number(currentInst.amount) * 18 / 118;
+                const gst = Number(currentInst.amount) * 5 / 105;
                 const rent = Number(currentInst.amount) - gst;
                 const gstVal = 'INR ' + gst.toFixed(2);
                 const rentVal = 'INR ' + rent.toFixed(2);
@@ -257,13 +257,13 @@ exports.downloadInvoicePDF = async (req, res) => {
                 
                 drawRow('Week ' + currentInst.installment_no + ' - Installment', dueStr, paidStr, rentVal, gstVal, currentInst.amount, true);
             } else {
-                const gst = Number(invoice.amount) * 18 / 118;
+                const gst = Number(invoice.amount) * 5 / 105;
                 const rent = Number(invoice.amount) - gst;
                 drawRow('Installment Payment', '-', new Date(invoice.createdAt).toLocaleDateString('en-IN'), 'INR ' + rent.toFixed(2), 'INR ' + gst.toFixed(2), invoice.amount, true);
             }
         } else {
             const planName = booking && booking.plan ? booking.plan.plan_name : 'Rental Plan';
-            const gst = Number(invoice.amount) * 18 / 118;
+            const gst = Number(invoice.amount) * 5 / 105;
             const rent = Number(invoice.amount) - gst;
             const gstVal = 'INR ' + gst.toFixed(2);
             const rentVal = 'INR ' + rent.toFixed(2);

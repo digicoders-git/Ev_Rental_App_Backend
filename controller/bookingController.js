@@ -923,7 +923,7 @@ exports.downloadReceipt = async (req, res) => {
         doc.text('DUE DATE', 210, tableTop + 12);
         doc.text('PAID DATE', 280, tableTop + 12);
         doc.text('RENT', 360, tableTop + 12);
-        doc.text('GST (18%)', 420, tableTop + 12);
+        doc.text('GST (5%)', 420, tableTop + 12);
         doc.text('TOTAL', 480, tableTop + 12, { width: 60, align: 'right' });
 
         let currentY = tableTop + 55;
@@ -946,7 +946,7 @@ exports.downloadReceipt = async (req, res) => {
                 const isPaid = inst.status === 'paid';
                 const dueStr = inst.due_date ? new Date(inst.due_date).toLocaleDateString('en-IN') : '-';
                 const paidStr = isPaid && inst.paid_date ? new Date(inst.paid_date).toLocaleDateString('en-IN') : (isPaid ? 'Paid' : 'Pending');
-                const gst = Number(inst.amount) * 18 / 118;
+                const gst = Number(inst.amount) * 5 / 105;
                 const rent = Number(inst.amount) - gst;
                 const gstVal = 'INR ' + gst.toFixed(2);
                 const rentVal = 'INR ' + rent.toFixed(2);
@@ -954,12 +954,12 @@ exports.downloadReceipt = async (req, res) => {
             });
         } else {
             const planName = booking.plan ? booking.plan.plan_name : 'Rental Plan';
-            const gst = Number(booking.total_amount || 0) * 18 / 118;
+            const gst = Number(booking.total_amount || 0) * 5 / 105;
             const rent = Number(booking.total_amount || 0) - gst;
             const gstVal = 'INR ' + gst.toFixed(2);
             const rentVal = 'INR ' + rent.toFixed(2);
             drawRow('EV Rental - ' + planName, new Date(booking.start_date).toLocaleDateString('en-IN'), new Date().toLocaleDateString('en-IN'), rentVal, gstVal, booking.total_amount || 0, true);
-            if ((booking.gst_amount || 0) > 0) drawRow('GST (18%)', '-', '-', '-', '-', booking.gst_amount, true);
+            if ((booking.gst_amount || 0) > 0) drawRow('GST (5%)', '-', '-', '-', '-', booking.gst_amount, true);
             if (booking.security_deposit > 0) drawRow('Security Deposit', '-', '-', '-', '-', booking.security_deposit, true);
             if (booking.late_fee > 0) drawRow('Late Fee', '-', '-', '-', '-', booking.late_fee, false);
             if ((booking.discount_amount || 0) > 0) drawRow('Discount Applied', '-', '-', '-', '-', -booking.discount_amount, true);

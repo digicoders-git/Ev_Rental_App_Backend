@@ -98,6 +98,7 @@ exports.getAllVehicles = async (req, res) => {
             if (latestBooking) {
                 vObj.driver_name = latestBooking.user?.name || 'Rider';
                 vObj.driver_phone = latestBooking.user?.mobile || '';
+                vObj.booking_start_date = latestBooking.start_date ? new Date(latestBooking.start_date).toISOString() : null;
                 const subDate = latestBooking.submission_date || latestBooking.actual_return_date || (latestBooking.return_status && latestBooking.return_status !== 'none' ? latestBooking.updatedAt : null);
                 vObj.submission_date = subDate ? new Date(subDate).toISOString() : null;
                 if (latestBooking.return_status === 'submission_pending') {
@@ -111,6 +112,7 @@ exports.getAllVehicles = async (req, res) => {
                 }
             } else {
                 vObj.driver_name = '—';
+                vObj.booking_start_date = null;
                 vObj.submission_date = null;
                 vObj.submission_status = vObj.is_busy ? 'On Ride' : (vObj.status === 'active' ? 'Available' : vObj.status);
             }
@@ -293,6 +295,7 @@ exports.getMyFranchiseVehicles = async (req, res) => {
             if (latestBooking) {
                 vObj.driver_name = latestBooking.user?.name || 'Rider';
                 vObj.driver_phone = latestBooking.user?.mobile || '';
+                vObj.booking_start_date = latestBooking.start_date ? new Date(latestBooking.start_date).toISOString() : null;
                 const subDate = latestBooking.submission_date || latestBooking.actual_return_date || (latestBooking.return_status && latestBooking.return_status !== 'none' ? latestBooking.updatedAt : null);
                 vObj.submission_date = subDate ? new Date(subDate).toISOString() : null;
                 if (latestBooking.return_status === 'submission_pending') {
@@ -306,6 +309,7 @@ exports.getMyFranchiseVehicles = async (req, res) => {
                 }
             } else {
                 vObj.driver_name = '—';
+                vObj.booking_start_date = null;
                 vObj.submission_date = null;
                 vObj.submission_status = vObj.is_busy ? 'On Ride' : (vObj.status === 'active' ? 'Available' : vObj.status);
             }

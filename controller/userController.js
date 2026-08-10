@@ -79,9 +79,13 @@ exports.updateProfile = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Profile can only be edited once. Please contact admin to change details.' });
         }
 
-        if (name) user.name = name;
-        if (email) user.email = email;
-        if (mobile) user.mobile = mobile;
+        // Lock Name, Email, and Mobile if KYC is verified
+        if (!user.isKycVerified) {
+            if (name) user.name = name;
+            if (email) user.email = email;
+            if (mobile) user.mobile = mobile;
+        }
+
         if (city) user.city = city;
         if (bio) user.bio = bio;
 

@@ -146,7 +146,14 @@ exports.getMyKYCStatus = async (req, res) => {
 // @access  Private/Admin
 exports.getAllKYCSubmissions = async (req, res) => {
     try {
-        const kycList = await KYC.find({ franchise: null }).populate('user', 'name mobile email dob kyc_fee_paid kyc_fee_transaction_id current_address permanent_address').sort('-createdAt');
+        const kycList = await KYC.find()
+            .populate({
+                path: 'user',
+                select: 'name mobile email dob kyc_fee_paid kyc_fee_transaction_id current_address permanent_address employeeId gigCompanyId',
+                populate: { path: 'gigCompanyId', select: 'name' }
+            })
+            .populate('franchise', 'store_name')
+            .sort('-createdAt');
         res.status(200).json({ success: true, count: kycList.length, data: kycList });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -300,7 +307,11 @@ exports.getFranchiseKYCSubmissions = async (req, res) => {
                 { franchise: franchiseId }
             ]
         })
-            .populate('user', 'name mobile email dob kyc_fee_paid kyc_fee_transaction_id current_address permanent_address isKycVerified')
+            .populate({
+                path: 'user',
+                select: 'name mobile email dob kyc_fee_paid kyc_fee_transaction_id current_address permanent_address isKycVerified employeeId gigCompanyId',
+                populate: { path: 'gigCompanyId', select: 'name' }
+            })
             .sort('-createdAt');
 
         res.status(200).json({ success: true, count: kycList.length, data: kycList });

@@ -17,7 +17,8 @@ const kycUploadFields = upload.fields([
     { name: 'aadharFront', maxCount: 1 },
     { name: 'aadharBack', maxCount: 1 },
     { name: 'panCard', maxCount: 1 },
-    { name: 'selfie', maxCount: 1 }
+    { name: 'selfie', maxCount: 1 },
+    { name: 'extraId', maxCount: 1 }
 ]);
 
 // User routes

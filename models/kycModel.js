@@ -33,6 +33,10 @@ const kycSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    extraId: {
+        type: String,
+        default: null
+    },
     status: {
         type: String,
         enum: ['pending', 'approved', 'rejected'],
@@ -57,6 +61,11 @@ const kycSchema = new mongoose.Schema({
     razorpay_order_id: {
         type: String,
         default: ''
+    },
+    franchise: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'FranchiseStore',
+        default: null
     }
 }, {
     timestamps: true

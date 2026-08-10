@@ -29,7 +29,7 @@ exports.submitKYC = async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        const { name, mobileNumber, current_address, permanent_address, dob, razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
+        const { name, mobileNumber, current_address, permanent_address, dob, razorpay_payment_id, razorpay_order_id, razorpay_signature, franchiseId } = req.body;
 
         if (!name || name.trim() === '') {
             return res.status(400).json({ success: false, message: 'Name is required' });
@@ -73,7 +73,8 @@ exports.submitKYC = async (req, res) => {
             mobileNumber, 
             status: 'pending',
             registration_fee_paid: true,
-            registration_fee_amount: 49
+            registration_fee_amount: 49,
+            franchise: franchiseId || null
         };
 
         // Update User Profile with new details
@@ -84,7 +85,7 @@ exports.submitKYC = async (req, res) => {
         user.kyc_fee_transaction_id = razorpay_payment_id;
         await user.save();
 
-        const fileFields = ['aadharFront', 'aadharBack', 'panCard', 'selfie'];
+        const fileFields = ['aadharFront', 'aadharBack', 'panCard', 'selfie', 'extraId'];
         fileFields.forEach(field => {
             if (req.files && req.files[field]) {
                 if (existingKyc && existingKyc[field]) {
@@ -145,7 +146,7 @@ exports.getMyKYCStatus = async (req, res) => {
 // @access  Private/Admin
 exports.getAllKYCSubmissions = async (req, res) => {
     try {
-        const kycList = await KYC.find().populate('user', 'name mobile email dob kyc_fee_paid kyc_fee_transaction_id current_address permanent_address').sort('-createdAt');
+        const kycList = await KYC.find({ franchise: null }).populate('user', 'name mobile email dob kyc_fee_paid kyc_fee_transaction_id current_address permanent_address').sort('-createdAt');
         res.status(200).json({ success: true, count: kycList.length, data: kycList });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -292,8 +293,13 @@ exports.getFranchiseKYCSubmissions = async (req, res) => {
         const bookings = await Booking.find({ franchise: franchiseId }).select('user').lean();
         const userIds = [...new Set(bookings.map(b => b.user?.toString()).filter(Boolean))];
 
-        // Get KYC for those users only
-        const kycList = await KYC.find({ user: { $in: userIds } })
+        // Get KYC for those users + directly routed to this franchise
+        const kycList = await KYC.find({ 
+            $or: [
+                { user: { $in: userIds } },
+                { franchise: franchiseId }
+            ]
+        })
             .populate('user', 'name mobile email dob kyc_fee_paid kyc_fee_transaction_id current_address permanent_address isKycVerified')
             .sort('-createdAt');
 

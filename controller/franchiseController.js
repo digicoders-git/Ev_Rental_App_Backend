@@ -399,14 +399,14 @@ exports.getFranchiseRevenue = async (req, res) => {
                 $match: {
                     franchise: new mongoose.Types.ObjectId(franchiseId),
                     booking_status: { $ne: 'cancelled' },
-                    payment_status: 'paid',
+                    total_paid: { $gt: 0 },
                     ...dateFilter
                 }
             },
             {
                 $group: {
                     _id: null,
-                    totalRevenue: { $sum: '$grand_total' },
+                    totalRevenue: { $sum: '$total_paid' },
                     totalBookings: { $sum: 1 },
                     totalLateFees: { $sum: '$late_fee' },
                     averageBookingValue: { $avg: '$grand_total' }
@@ -450,7 +450,7 @@ exports.getAdminRevenueByFranchise = async (req, res) => {
                 $match: {
                     franchise: new mongoose.Types.ObjectId(id),
                     booking_status: { $ne: 'cancelled' },
-                    payment_status: 'paid',
+                    total_paid: { $gt: 0 },
                     ...dateFilter
                 }
             },
@@ -512,7 +512,7 @@ exports.getFranchiseHistory = async (req, res) => {
             {
                 $match: {
                     franchise: new mongoose.Types.ObjectId(storeId),
-                    payment_status: 'paid',
+                    total_paid: { $gt: 0 },
                     ...dateFilter
                 }
             },
@@ -557,7 +557,7 @@ exports.getFranchiseHistory = async (req, res) => {
             {
                 $match: {
                     franchise: new mongoose.Types.ObjectId(storeId),
-                    payment_status: 'paid'
+                    total_paid: { $gt: 0 }
                 }
             },
             {

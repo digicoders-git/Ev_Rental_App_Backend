@@ -17,7 +17,7 @@ exports.getDashboardStats = async (req, res) => {
         const startOfYear = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
 
         const revenueStats = await Booking.aggregate([
-            { $match: { payment_status: 'paid' } },
+            { $match: { total_paid: { $gt: 0 } } },
             {
                 $group: {
                     _id: null,
@@ -222,7 +222,7 @@ exports.getRevenueAnalysis = async (req, res) => {
         }
 
         const analysis = await Booking.aggregate([
-            { $match: { payment_status: 'paid' } },
+            { $match: { total_paid: { $gt: 0 } } },
             {
                 $group: {
                     _id: groupId,
@@ -245,7 +245,7 @@ exports.getRevenueAnalysis = async (req, res) => {
 exports.getFranchisePerformance = async (req, res) => {
     try {
         const performance = await Booking.aggregate([
-            { $match: { payment_status: 'paid' } },
+            { $match: { total_paid: { $gt: 0 } } },
             {
                 $lookup: {
                     from: 'vehicles',
@@ -362,7 +362,7 @@ exports.getRevenueReport = async (req, res) => {
 
         const matchQuery = { 
             createdAt: { $gte: queryStartDate, ...(isCustom ? { $lte: queryEndDate } : {}) },
-            payment_status: 'paid' 
+            total_paid: { $gt: 0 } 
         };
 
         // 1. Chart Data (Revenue vs Refunds)

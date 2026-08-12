@@ -24,7 +24,7 @@ exports.generateSettlement = async (req, res) => {
         // We will sum up all 'paid' bookings.
         const bookings = await Booking.find({
             franchise: franchiseId,
-            payment_status: 'paid',
+            total_paid: { $gt: 0 },
             createdAt: { $gte: start, $lte: end },
             payment_gateway_used: 'platform' // Only platform payments need settlement from Super Admin
         });
@@ -33,7 +33,7 @@ exports.generateSettlement = async (req, res) => {
             return res.status(400).json({ success: false, message: 'No eligible platform-paid bookings found for this period to settle.' });
         }
 
-        const total_collected = bookings.reduce((sum, b) => sum + b.grand_total, 0);
+        const total_collected = bookings.reduce((sum, b) => sum + (b.total_paid || 0), 0);
         const platform_fee_percentage = 8;
         const commission_deducted = (total_collected * platform_fee_percentage) / 100;
         const final_payout = total_collected - commission_deducted;

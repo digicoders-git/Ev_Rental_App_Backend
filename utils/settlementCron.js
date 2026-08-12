@@ -21,13 +21,13 @@ const generateDailySettlements = async () => {
         for (const store of franchises) {
             const bookings = await Booking.find({
                 franchise: store._id,
-                payment_status: 'paid',
+                total_paid: { $gt: 0 },
                 createdAt: { $gte: start, $lte: end },
                 payment_gateway_used: 'platform'
             });
 
             if (bookings.length > 0) {
-                const total_collected = bookings.reduce((sum, b) => sum + b.grand_total, 0);
+                const total_collected = bookings.reduce((sum, b) => sum + (b.total_paid || 0), 0);
                 const platform_fee_percentage = 8;
                 const commission_deducted = (total_collected * platform_fee_percentage) / 100;
                 const final_payout = total_collected - commission_deducted;

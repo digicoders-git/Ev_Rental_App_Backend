@@ -139,6 +139,24 @@ exports.createBooking = async (req, res) => {
 
         let payment_installments = [];
         let initial_payment_status = 'pending';
+        let initial_total_paid = 0;
+
+        if (payment_method === 'wallet') {
+            const walletUser = await User.findById(bookingUserId);
+            if (!walletUser) {
+                return res.status(404).json({ success: false, message: 'User not found' });
+            }
+            if (walletUser.wallet_balance < grand_total) {
+                return res.status(400).json({ success: false, message: 'Insufficient wallet balance' });
+            }
+            
+            // Deduct balance
+            walletUser.wallet_balance -= grand_total;
+            await walletUser.save();
+            
+            initial_payment_status = 'paid';
+            initial_total_paid = grand_total;
+        }
 
         if (payment_method === 'installments') {
             const start = new Date(start_date);
@@ -184,6 +202,7 @@ exports.createBooking = async (req, res) => {
             discount_amount,
             security_deposit,
             grand_total,
+            total_paid: initial_total_paid,
             pickup_location,
             drop_location,
             payment_method,
@@ -191,6 +210,18 @@ exports.createBooking = async (req, res) => {
             payment_installments,
             auto_renew: true // Defaulted to true so auto-renew works automatically
         });
+
+        if (payment_method === 'wallet') {
+            await WalletTransaction.create({
+                user: bookingUserId,
+                amount: grand_total,
+                type: 'debit',
+                description: `Payment for Booking #${booking.booking_id}`,
+                performed_by: 'user'
+            });
+            const { creditFranchiseWallet } = require('../utils/franchiseWalletHelper');
+            await creditFranchiseWallet(booking._id, grand_total);
+        }
 
         // Immediately generate a master invoice so it's available in the My Invoices screen
         try {

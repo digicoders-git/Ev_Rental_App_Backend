@@ -17,7 +17,7 @@ exports.getDashboardStats = async (req, res) => {
         const startOfYear = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
 
         const revenueStats = await Booking.aggregate([
-            { $match: { payment_status: { $in: ['paid', 'partially_paid'] } } },
+            { $match: { payment_status: 'paid' } },
             {
                 $group: {
                     _id: null,
@@ -222,7 +222,7 @@ exports.getRevenueAnalysis = async (req, res) => {
         }
 
         const analysis = await Booking.aggregate([
-            { $match: { payment_status: { $in: ['paid', 'partially_paid'] } } },
+            { $match: { payment_status: 'paid' } },
             {
                 $group: {
                     _id: groupId,
@@ -245,7 +245,7 @@ exports.getRevenueAnalysis = async (req, res) => {
 exports.getFranchisePerformance = async (req, res) => {
     try {
         const performance = await Booking.aggregate([
-            { $match: { payment_status: { $in: ['paid', 'partially_paid'] } } },
+            { $match: { payment_status: 'paid' } },
             {
                 $lookup: {
                     from: 'vehicles',

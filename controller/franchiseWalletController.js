@@ -33,7 +33,7 @@ exports.getWalletDetails = async (req, res) => {
 
         const Booking = require('../models/bookingModel');
         const bookingsResult = await Booking.aggregate([
-            { $match: { franchise: franchise._id } },
+            { $match: { franchise: franchise._id, payment_status: 'paid' } },
             { $group: { _id: null, total: { $sum: '$total_paid' } } }
         ]);
         const totalGrossRevenue = bookingsResult.length > 0 ? Number(bookingsResult[0].total.toFixed(2)) : 0;

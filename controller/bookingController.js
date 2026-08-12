@@ -431,7 +431,7 @@ exports.getAllBookings = async (req, res) => {
                 select: 'name mobile referred_by',
                 populate: { path: 'referred_by', select: 'driver_id' }
             })
-            .populate('vehicle', 'vehicle_name registration_number franchise')
+            .populate('vehicle', 'vehicle_name registration_number franchise vehicle_id')
             .populate('franchise', 'store_name')
             .populate('plan', 'plan_name')
             .sort('-createdAt');
@@ -476,7 +476,7 @@ exports.getFranchiseBookings = async (req, res) => {
                 select: 'name mobile email city isKycVerified profile_picture referred_by notes status credit_score',
                 populate: { path: 'referred_by', select: 'driver_id' }
             })
-            .populate('vehicle', 'vehicle_name registration_number')
+            .populate('vehicle', 'vehicle_name registration_number vehicle_id')
             .populate('plan', 'plan_name')
             .sort('-createdAt');
 

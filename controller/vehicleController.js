@@ -158,6 +158,9 @@ exports.updateVehicle = async (req, res) => {
         }
 
         const updateData = { ...req.body };
+        
+        // Prevent vehicle_id from being overwritten or changed
+        delete updateData.vehicle_id;
 
         // Handle File Overwrites
         if (req.files) {

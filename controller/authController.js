@@ -90,6 +90,8 @@ exports.verifyOTP = async (req, res) => {
         user.isVerified = true;
         user.isLoggedIn = true;
         if (fcm_token) user.fcm_token = fcm_token;
+        const token = generateToken(user._id);
+        user.current_jwt = token;
         await user.save();
 
         res.status(200).json({
@@ -103,7 +105,7 @@ exports.verifyOTP = async (req, res) => {
                 role: user.role,
                 isKycVerified: user.isKycVerified
             },
-            token: generateToken(user._id)
+            token: token
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -275,11 +277,12 @@ exports.logout = async (req, res) => {
     try {
         const { userId, mobile } = req.body;
         let idToLogout = userId;
+        let providedToken = null;
 
         if (!idToLogout && req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
             try {
-                const token = req.headers.authorization.split(' ')[1];
-                const decoded = jwt.verify(token, process.env.JWT_SECRET);
+                providedToken = req.headers.authorization.split(' ')[1];
+                const decoded = jwt.verify(providedToken, process.env.JWT_SECRET);
                 idToLogout = decoded.id;
             } catch (err) {
                 // Token invalid or expired
@@ -294,8 +297,13 @@ exports.logout = async (req, res) => {
         }
 
         if (user) {
+            if (providedToken && user.current_jwt && user.current_jwt !== providedToken) {
+                // The device trying to logout is already logged out (old token)
+                return res.status(200).json({ success: true, message: 'Already logged out from this device' });
+            }
             user.isLoggedIn = false;
             user.active_device = null;
+            user.current_jwt = "";
             await user.save();
         }
 

@@ -279,11 +279,11 @@ exports.logout = async (req, res) => {
         let idToLogout = userId;
         let providedToken = null;
 
-        if (!idToLogout && req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+        if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
             try {
                 providedToken = req.headers.authorization.split(' ')[1];
                 const decoded = jwt.verify(providedToken, process.env.JWT_SECRET);
-                idToLogout = decoded.id;
+                if (!idToLogout) idToLogout = decoded.id;
             } catch (err) {
                 // Token invalid or expired
             }

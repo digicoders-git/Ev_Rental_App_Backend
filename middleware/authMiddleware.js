@@ -20,6 +20,11 @@ const protect = async (req, res, next) => {
                 return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
             }
 
+            // check if token is current (single device policy)
+            if (req.user.role === 'user' && req.user.current_jwt && req.user.current_jwt !== token) {
+                return res.status(401).json({ success: false, message: 'Logged in from another device', forceLogout: true });
+            }
+
             // --- FULL FLOW: STATUS CHECK ---
             if (req.user.status === 'blocked') {
                 return res.status(403).json({ 

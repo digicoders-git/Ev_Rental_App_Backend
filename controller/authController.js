@@ -162,6 +162,8 @@ exports.directLogin = async (req, res) => {
         }
 
         if (fcm_token) user.fcm_token = fcm_token;
+        const token = generateToken(user._id);
+        user.current_jwt = token;
         await user.save();
 
         res.status(200).json({
@@ -175,7 +177,7 @@ exports.directLogin = async (req, res) => {
                 role: user.role,
                 isKycVerified: user.isKycVerified
             },
-            token: generateToken(user._id)
+            token: token
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

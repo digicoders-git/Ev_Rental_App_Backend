@@ -145,6 +145,10 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    current_jwt: {
+        type: String,
+        default: ""
+    },
     active_device: {
         type: String,
         default: null

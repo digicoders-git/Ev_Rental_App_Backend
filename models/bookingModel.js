@@ -142,6 +142,25 @@ const bookingSchema = new mongoose.Schema({
     auto_renew: {
         type: Boolean,
         default: false
+    },
+    // ── Force Cancel Audit Fields ──
+    cancellation_remark: {
+        type: String,
+        default: ''
+    },
+    cancellation_reason_type: {
+        type: String,
+        enum: ['Rider Absconded', 'Vehicle Abandoned', 'Non-Payment', 'Fraud/Dispute', 'Customer Request', 'Other', ''],
+        default: ''
+    },
+    cancelled_by: {
+        type: String,
+        enum: ['admin', 'franchise', 'user', 'system', ''],
+        default: ''
+    },
+    cancelled_at: {
+        type: Date,
+        default: null
     }
 }, {
     timestamps: true,

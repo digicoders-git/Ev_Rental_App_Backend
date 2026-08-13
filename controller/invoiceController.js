@@ -141,8 +141,19 @@ exports.getAllInvoices = async (req, res) => {
             query.franchise = req.franchise._id;
         } else if (req.user && req.user.role === 'franchise') {
             query.franchise = req.user.franchiseId;
-        } else if (req.query.franchiseId) {
+        } else if (req.query.franchiseId && req.query.franchiseId !== 'all') {
             query.franchise = req.query.franchiseId === 'platform' ? null : req.query.franchiseId;
+        }
+
+        if (req.query.status && req.query.status !== 'all') {
+            query.status = req.query.status;
+        }
+
+        if (req.query.startDate && req.query.endDate) {
+            query.createdAt = {
+                $gte: new Date(req.query.startDate),
+                $lte: new Date(new Date(req.query.endDate).setHours(23, 59, 59, 999))
+            };
         }
 
         const invoices = await Invoice.find(query)
@@ -323,5 +334,165 @@ exports.syncMasterInvoiceForBooking = async (booking) => {
         }
     } catch (err) {
         console.error('Error syncing master invoice:', err);
+    }
+};
+
+// @desc    Download Bulk Invoice Report PDF
+// @route   GET /api/invoices/report/download
+// @access  Private (Admin, Franchise)
+exports.downloadBulkInvoiceReport = async (req, res) => {
+    try {
+        let query = {};
+        if (req.franchise) {
+            query.franchise = req.franchise._id;
+        } else if (req.user && req.user.role === 'franchise') {
+            query.franchise = req.user.franchiseId;
+        } else if (req.query.franchiseId && req.query.franchiseId !== 'all') {
+            query.franchise = req.query.franchiseId === 'platform' ? null : req.query.franchiseId;
+        }
+
+        if (req.query.status && req.query.status !== 'all') {
+            query.status = req.query.status;
+        }
+
+        if (req.query.startDate && req.query.endDate) {
+            query.createdAt = {
+                $gte: new Date(req.query.startDate),
+                $lte: new Date(new Date(req.query.endDate).setHours(23, 59, 59, 999))
+            };
+        }
+
+        const invoices = await Invoice.find(query)
+            .populate('user', 'name mobile')
+            .populate({ path: 'booking', populate: [{ path: 'vehicle', select: 'vehicle_name registration_number' }, { path: 'plan', select: 'plan_name' }] })
+            .populate('franchise', 'store_name')
+            .sort('-createdAt');
+
+        const doc = new PDFDocument({ margin: 30, size: 'A4' });
+        res.setHeader('Content-disposition', 'attachment; filename=Payment_History_Report.pdf');
+        res.setHeader('Content-type', 'application/pdf');
+        doc.pipe(res);
+
+        const pageWidth = doc.page.width;
+        
+        doc.fontSize(24).font('Helvetica-Bold').fillColor('#333').text('Payment History Report', 30, 40, { align: 'center' });
+        doc.fontSize(10).font('Helvetica').fillColor('#666').text(`Generated on: ${new Date().toLocaleString()}`, 30, 70, { align: 'center' });
+        
+        let filterText = [];
+        if (req.query.startDate) filterText.push(`Date: ${new Date(req.query.startDate).toLocaleDateString()} to ${new Date(req.query.endDate).toLocaleDateString()}`);
+        if (req.query.status && req.query.status !== 'all') filterText.push(`Status: ${req.query.status.toUpperCase()}`);
+        if (filterText.length > 0) {
+            doc.fontSize(10).fillColor('#444').text(`Filters applied: ${filterText.join(' | ')}`, 30, 90, { align: 'center' });
+        }
+
+        let paidRent = 0, paidGST = 0, paidTotal = 0;
+        let unpaidRent = 0, unpaidGST = 0, unpaidTotal = 0;
+
+        const tableTop = 130;
+        doc.rect(30, tableTop, pageWidth - 60, 25).fill('#333');
+        doc.fillColor('#FFF').font('Helvetica-Bold').fontSize(9);
+        doc.text('INV NO', 40, tableTop + 8);
+        doc.text('DATE', 110, tableTop + 8);
+        doc.text('CUSTOMER', 170, tableTop + 8);
+        doc.text('VEHICLE', 270, tableTop + 8);
+        doc.text('STATUS', 360, tableTop + 8);
+        doc.text('RENT', 410, tableTop + 8);
+        doc.text('GST', 460, tableTop + 8);
+        doc.text('TOTAL', 510, tableTop + 8);
+
+        let currentY = tableTop + 35;
+
+        invoices.forEach(inv => {
+            if (currentY > 740) {
+                doc.addPage();
+                currentY = 40;
+                doc.rect(30, currentY, pageWidth - 60, 25).fill('#333');
+                doc.fillColor('#FFF').font('Helvetica-Bold').fontSize(9);
+                doc.text('INV NO', 40, currentY + 8);
+                doc.text('DATE', 110, currentY + 8);
+                doc.text('CUSTOMER', 170, currentY + 8);
+                doc.text('VEHICLE', 270, currentY + 8);
+                doc.text('STATUS', 360, currentY + 8);
+                doc.text('RENT', 410, currentY + 8);
+                doc.text('GST', 460, currentY + 8);
+                doc.text('TOTAL', 510, currentY + 8);
+                currentY += 35;
+            }
+
+            const rent = Number(inv.amount || 0);
+            const gst = Number(inv.gst_amount || 0);
+            const total = Number(inv.total_amount || 0);
+
+            if (inv.status === 'paid') {
+                paidRent += rent;
+                paidGST += gst;
+                paidTotal += total;
+            } else {
+                unpaidRent += rent;
+                unpaidGST += gst;
+                unpaidTotal += total;
+            }
+
+            doc.font('Helvetica').fillColor('#333').fontSize(8);
+            doc.text(inv.invoice_number, 40, currentY, { width: 65 });
+            doc.text(new Date(inv.createdAt).toLocaleDateString(), 110, currentY);
+            doc.text(inv.user ? inv.user.name : 'N/A', 170, currentY, { width: 90 });
+            doc.text(inv.booking?.vehicle?.registration_number || 'N/A', 270, currentY, { width: 80 });
+            
+            doc.fillColor(inv.status === 'paid' ? '#16a34a' : '#ea580c');
+            doc.text(inv.status.toUpperCase(), 360, currentY);
+            
+            doc.fillColor('#333');
+            doc.text(rent.toFixed(2), 410, currentY);
+            doc.text(gst.toFixed(2), 460, currentY);
+            doc.font('Helvetica-Bold').text(total.toFixed(2), 510, currentY);
+
+            doc.moveTo(30, currentY + 15).lineTo(pageWidth - 30, currentY + 15).strokeColor('#EEE').lineWidth(1).stroke();
+            currentY += 25;
+        });
+
+        if (currentY > 700) {
+            doc.addPage();
+            currentY = 40;
+        }
+
+        currentY += 10;
+        
+        // Unpaid Summary
+        doc.rect(30, currentY, 210, 80).fill('#f8fafc').stroke('#e2e8f0');
+        doc.fillColor('#333').font('Helvetica-Bold').fontSize(10);
+        doc.text('SUMMARY (Unpaid)', 40, currentY + 10);
+        
+        doc.font('Helvetica').fontSize(9);
+        doc.text('Total Rent:', 40, currentY + 30);
+        doc.text(`INR ${unpaidRent.toFixed(2)}`, 130, currentY + 30, { align: 'right', width: 100 });
+        
+        doc.text('Total GST (5%):', 40, currentY + 45);
+        doc.text(`INR ${unpaidGST.toFixed(2)}`, 130, currentY + 45, { align: 'right', width: 100 });
+        
+        doc.font('Helvetica-Bold').fontSize(11);
+        doc.text('GRAND TOTAL:', 40, currentY + 62);
+        doc.fillColor('#ea580c').text(`INR ${unpaidTotal.toFixed(2)}`, 130, currentY + 62, { align: 'right', width: 100 });
+
+        // Paid Summary
+        doc.rect(350, currentY, 210, 80).fill('#f8fafc').stroke('#e2e8f0');
+        
+        doc.fillColor('#333').font('Helvetica-Bold').fontSize(10);
+        doc.text('SUMMARY (Paid)', 360, currentY + 10);
+        
+        doc.font('Helvetica').fontSize(9);
+        doc.text('Total Rent:', 360, currentY + 30);
+        doc.text(`INR ${paidRent.toFixed(2)}`, 450, currentY + 30, { align: 'right', width: 100 });
+        
+        doc.text('Total GST (5%):', 360, currentY + 45);
+        doc.text(`INR ${paidGST.toFixed(2)}`, 450, currentY + 45, { align: 'right', width: 100 });
+        
+        doc.font('Helvetica-Bold').fontSize(11);
+        doc.text('GRAND TOTAL:', 360, currentY + 62);
+        doc.fillColor('#16a34a').text(`INR ${paidTotal.toFixed(2)}`, 450, currentY + 62, { align: 'right', width: 100 });
+
+        doc.end();
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
 };

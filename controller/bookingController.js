@@ -2590,3 +2590,132 @@ exports.verifyLateSubmissionOnline = async (req, res) => {
     }
 };
 
+// @desc    Force Cancel a booking (Admin / Franchise) with remark
+// @route   PATCH /api/bookings/:id/force-cancel
+// @access  Admin + Franchise
+exports.forceCancelBooking = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { remark, reason_type } = req.body;
+
+        // Remark is mandatory
+        if (!remark || remark.trim().length < 5) {
+            return res.status(422).json({
+                success: false,
+                message: 'A cancellation remark is required (minimum 5 characters).'
+            });
+        }
+
+        const booking = await Booking.findById(id)
+            .populate('vehicle', 'vehicle_name registration_number status')
+            .populate('user', 'name mobile fcm_token');
+
+        if (!booking) {
+            return res.status(404).json({ success: false, message: 'Booking not found.' });
+        }
+
+        // Only allow cancellation of active bookings
+        if (['completed', 'cancelled'].includes(booking.booking_status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Booking is already ${booking.booking_status}. Cannot force cancel.`
+            });
+        }
+
+        // Determine who is cancelling
+        let cancelledBy = 'admin';
+        if (req.franchise) cancelledBy = 'franchise';
+
+        // Franchise can only cancel bookings from their own store
+        if (req.franchise && booking.franchise) {
+            const storeId = req.franchise.store?.toString() || req.franchise._id?.toString();
+            if (booking.franchise.toString() !== storeId) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Not authorized to cancel this booking. It belongs to another franchise.'
+                });
+            }
+        }
+
+        // Mark all pending installments as overdue (for record keeping)
+        if (booking.payment_installments && booking.payment_installments.length > 0) {
+            booking.payment_installments.forEach(inst => {
+                if (inst.status === 'pending') {
+                    inst.status = 'overdue';
+                }
+            });
+        }
+
+        // Update booking
+        booking.booking_status = 'cancelled';
+        booking.cancellation_remark = remark.trim();
+        booking.cancellation_reason_type = reason_type || 'Other';
+        booking.cancelled_by = cancelledBy;
+        booking.cancelled_at = new Date();
+        booking.is_vehicle_released = true;
+
+        await booking.save();
+
+        // Release vehicle → set back to active
+        if (booking.vehicle && booking.vehicle._id) {
+            await Vehicle.findByIdAndUpdate(booking.vehicle._id, { status: 'active' });
+        }
+
+        // Send push notification to user
+        if (booking.user) {
+            const reasonLabel = reason_type || 'Policy Violation';
+            const notifTitle = '🚫 Booking Cancelled';
+            const notifBody = `Your booking (${booking.booking_id}) has been cancelled by ${cancelledBy}. Reason: ${reasonLabel}. Please contact support for more details.`;
+
+            try {
+                await sendNotification({
+                    user: booking.user._id || booking.user,
+                    title: notifTitle,
+                    message: notifBody,
+                    type: 'booking'
+                });
+
+                if (booking.user.fcm_token) {
+                    await sendPushNotification(booking.user.fcm_token, notifTitle, notifBody);
+                }
+            } catch (notifErr) {
+                console.error('Notification error (non-fatal):', notifErr.message);
+            }
+        }
+
+        // Emit socket event if io available
+        try {
+            const io = req.app.get('io');
+            if (io && booking.user) {
+                const userId = (booking.user._id || booking.user).toString();
+                io.to(userId).emit('booking_force_cancelled', {
+                    bookingId: booking._id,
+                    booking_id: booking.booking_id,
+                    reason: reason_type,
+                    remark: remark.trim(),
+                    cancelledBy
+                });
+            }
+        } catch (socketErr) {
+            console.error('Socket emit error (non-fatal):', socketErr.message);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Booking ${booking.booking_id} has been force cancelled successfully.`,
+            booking: {
+                _id: booking._id,
+                booking_id: booking.booking_id,
+                booking_status: booking.booking_status,
+                cancelled_by: booking.cancelled_by,
+                cancelled_at: booking.cancelled_at,
+                cancellation_reason_type: booking.cancellation_reason_type,
+                cancellation_remark: booking.cancellation_remark
+            }
+        });
+
+    } catch (error) {
+        console.error('FORCE CANCEL ERROR:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

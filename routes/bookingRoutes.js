@@ -35,7 +35,8 @@ const {
     verifyAllInstallmentsOnline,
     payLateSubmissionWithWallet,
     initiateLateSubmissionOnline,
-    verifyLateSubmissionOnline
+    verifyLateSubmissionOnline,
+    forceCancelBooking
 } = require('../controller/bookingController');
 const { protect, admin, franchiseProtect, anyProtect } = require('../middleware/authMiddleware');
 
@@ -79,6 +80,7 @@ router.patch('/:id/reject', anyProtect, rejectBooking);
 router.patch('/:id/status', anyProtect, updateBookingStatus);
 router.put('/:id/change-vehicle', anyProtect, changeAssignedVehicle);
 router.put('/:id/unassign', anyProtect, unassignVehicle);
+router.patch('/:id/force-cancel', anyProtect, forceCancelBooking);
 
 // Installment Routes
 router.post('/:id/installments/setup', anyProtect, setupInstallments);

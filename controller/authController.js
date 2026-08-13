@@ -114,7 +114,7 @@ exports.verifyOTP = async (req, res) => {
 // @route   POST /api/auth/login
 // @access  Public
 exports.directLogin = async (req, res) => {
-    const { mobile, name, fcm_token, referralCode } = req.body;
+    const { mobile, name, fcm_token, referralCode, forceLogin } = req.body;
 
     if (!mobile) {
         return res.status(400).json({ success: false, message: 'Please provide mobile number' });
@@ -127,10 +127,19 @@ exports.directLogin = async (req, res) => {
     try {
         let user = await User.findOne({ mobile });
         if (user && user.isLoggedIn) {
-            return res.status(403).json({
-                success: false,
-                message: 'This account is already logged in on another device. Please logout from the existing device first.'
-            });
+            if (forceLogin) {
+                // emit socket event to log out other devices
+                const io = req.app.get('io');
+                if (io) {
+                    io.to(user._id.toString()).emit('force_logout', { message: 'Logged in from another device' });
+                }
+            } else {
+                return res.status(403).json({
+                    success: false,
+                    requiresForceLogout: true,
+                    message: 'This account is already logged in on another device. Do you want to logout from all other devices and continue?'
+                });
+            }
         }
 
         if (!user) {

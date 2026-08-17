@@ -895,7 +895,8 @@ exports.downloadReceipt = async (req, res) => {
         const booking = await Booking.findById(req.params.id)
             .populate('user')
             .populate('vehicle')
-            .populate('plan');
+            .populate('plan')
+            .populate('franchise');
 
         if (!booking) {
             return res.status(404).json({ success: false, message: 'Booking not found' });
@@ -1045,16 +1046,28 @@ exports.downloadReceipt = async (req, res) => {
         const rightX = 310;
         const rw = pageWidth - 30 - 310;
         
+        const franchiseState = (booking.franchise?.state || 'uttar pradesh').toLowerCase().trim();
+        const isUP = ['uttar pradesh', 'up', 'u.p.', 'u p'].includes(franchiseState);
+
         doc.fillColor('#000').font('Helvetica').text('Total Taxable Amount', rightX, botTop);
         doc.text(totalTaxableAmount.toFixed(2), rightX, botTop, { align: 'right', width: rw });
 
         doc.moveTo(rightX, botTop + 15).lineTo(pageWidth - 30, botTop + 15).strokeColor('#cbd5e1').lineWidth(1).stroke();
-        doc.font('Helvetica-Bold').text('CGST 2.5%', rightX, botTop + 25);
-        doc.font('Helvetica').text(totalGstAmount.toFixed(2), rightX, botTop + 25, { align: 'right', width: rw });
+        
+        if (isUP) {
+            doc.font('Helvetica-Bold').text('CGST 2.5%', rightX, botTop + 25);
+            doc.font('Helvetica').text(totalGstAmount.toFixed(2), rightX, botTop + 25, { align: 'right', width: rw });
 
-        doc.moveTo(rightX, botTop + 40).lineTo(pageWidth - 30, botTop + 40).stroke();
-        doc.font('Helvetica-Bold').text('SGST 2.5%', rightX, botTop + 50);
-        doc.font('Helvetica').text(totalGstAmount.toFixed(2), rightX, botTop + 50, { align: 'right', width: rw });
+            doc.moveTo(rightX, botTop + 40).lineTo(pageWidth - 30, botTop + 40).stroke();
+            doc.font('Helvetica-Bold').text('SGST 2.5%', rightX, botTop + 50);
+            doc.font('Helvetica').text(totalGstAmount.toFixed(2), rightX, botTop + 50, { align: 'right', width: rw });
+        } else {
+            const igstAmount = totalGstAmount * 2;
+            doc.font('Helvetica-Bold').text('IGST 5%', rightX, botTop + 25);
+            doc.font('Helvetica').text(igstAmount.toFixed(2), rightX, botTop + 25, { align: 'right', width: rw });
+
+            doc.moveTo(rightX, botTop + 40).lineTo(pageWidth - 30, botTop + 40).stroke();
+        }
 
         doc.moveTo(rightX, botTop + 65).lineTo(pageWidth - 30, botTop + 65).strokeColor('#000').stroke();
         doc.fontSize(12).font('Helvetica-Bold').text('Total', rightX, botTop + 80);

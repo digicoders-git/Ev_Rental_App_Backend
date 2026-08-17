@@ -171,7 +171,7 @@ exports.getAllInvoices = async (req, res) => {
         const invoices = await Invoice.find(query)
             .populate('user', 'name mobile')
             .populate({ path: 'booking', populate: [{ path: 'vehicle', select: 'vehicle_name registration_number' }, { path: 'plan', select: 'plan_name' }] })
-            .populate('franchise', 'store_name')
+            .populate('franchise', 'store_name state')
             .sort('-createdAt');
 
         // Dynamically sync status for Franchise/Admin too
@@ -205,6 +205,7 @@ exports.downloadInvoicePDF = async (req, res) => {
     try {
         const invoice = await Invoice.findById(req.params.id)
             .populate('user')
+            .populate('franchise')
             .populate({ path: 'booking', populate: [{ path: 'plan' }, { path: 'vehicle' }] });
 
         if (!invoice) {
@@ -347,16 +348,28 @@ exports.downloadInvoicePDF = async (req, res) => {
         const rightX = 310;
         const rw = pageWidth - 30 - 310;
         
+        const franchiseState = (invoice.franchise?.state || invoice.booking?.franchise?.state || 'uttar pradesh').toLowerCase().trim();
+        const isUP = ['uttar pradesh', 'up', 'u.p.', 'u p'].includes(franchiseState);
+
         doc.fillColor('#000').font('Helvetica').text('Total Taxable Amount', rightX, botTop);
         doc.text(taxableAmount.toFixed(2), rightX, botTop, { align: 'right', width: rw });
 
         doc.moveTo(rightX, botTop + 15).lineTo(pageWidth - 30, botTop + 15).strokeColor('#cbd5e1').lineWidth(1).stroke();
-        doc.font('Helvetica-Bold').text('CGST 2.5%', rightX, botTop + 25);
-        doc.font('Helvetica').text(gstAmount.toFixed(2), rightX, botTop + 25, { align: 'right', width: rw });
+        
+        if (isUP) {
+            doc.font('Helvetica-Bold').text('CGST 2.5%', rightX, botTop + 25);
+            doc.font('Helvetica').text(gstAmount.toFixed(2), rightX, botTop + 25, { align: 'right', width: rw });
 
-        doc.moveTo(rightX, botTop + 40).lineTo(pageWidth - 30, botTop + 40).stroke();
-        doc.font('Helvetica-Bold').text('SGST 2.5%', rightX, botTop + 50);
-        doc.font('Helvetica').text(gstAmount.toFixed(2), rightX, botTop + 50, { align: 'right', width: rw });
+            doc.moveTo(rightX, botTop + 40).lineTo(pageWidth - 30, botTop + 40).stroke();
+            doc.font('Helvetica-Bold').text('SGST 2.5%', rightX, botTop + 50);
+            doc.font('Helvetica').text(gstAmount.toFixed(2), rightX, botTop + 50, { align: 'right', width: rw });
+        } else {
+            const igstAmount = gstAmount * 2;
+            doc.font('Helvetica-Bold').text('IGST 5%', rightX, botTop + 25);
+            doc.font('Helvetica').text(igstAmount.toFixed(2), rightX, botTop + 25, { align: 'right', width: rw });
+
+            doc.moveTo(rightX, botTop + 40).lineTo(pageWidth - 30, botTop + 40).stroke();
+        }
 
         doc.moveTo(rightX, botTop + 65).lineTo(pageWidth - 30, botTop + 65).strokeColor('#000').stroke();
         doc.fontSize(12).font('Helvetica-Bold').text('Total', rightX, botTop + 80);
@@ -457,7 +470,7 @@ exports.downloadBulkInvoiceReport = async (req, res) => {
         const invoices = await Invoice.find(query)
             .populate('user', 'name mobile')
             .populate({ path: 'booking', populate: [{ path: 'vehicle', select: 'vehicle_name registration_number' }, { path: 'plan', select: 'plan_name' }] })
-            .populate('franchise', 'store_name')
+            .populate('franchise', 'store_name state')
             .sort('-createdAt');
 
         const doc = new PDFDocument({ margin: 30, size: 'A4' });

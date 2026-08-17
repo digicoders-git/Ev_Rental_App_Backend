@@ -174,6 +174,24 @@ exports.getAllInvoices = async (req, res) => {
             .populate('franchise', 'store_name')
             .sort('-createdAt');
 
+        // Dynamically sync status for Franchise/Admin too
+        for (let invoice of invoices) {
+            const booking = invoice.booking;
+            if (booking) {
+                let currentStatus = invoice.status;
+                if (booking.payment_method !== 'installments') {
+                    currentStatus = booking.payment_status === 'paid' ? 'paid' : invoice.status;
+                } else if (booking.total_paid >= booking.grand_total) {
+                    currentStatus = 'paid';
+                }
+
+                if (invoice.status !== currentStatus) {
+                    invoice.status = currentStatus;
+                    await Invoice.findByIdAndUpdate(invoice._id, { status: currentStatus });
+                }
+            }
+        }
+
         res.status(200).json({ success: true, data: invoices });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

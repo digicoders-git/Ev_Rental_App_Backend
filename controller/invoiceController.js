@@ -259,8 +259,14 @@ exports.downloadInvoicePDF = async (req, res) => {
         // Separator Line
         doc.moveTo(30, 160).lineTo(pageWidth - 30, 160).strokeColor('#2563eb').lineWidth(2).stroke();
 
+        // Buyer (Bill To)
+        doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e3a8a').text('Buyer (Bill To)', 30, 175);
+        let customerName = invoice.user && invoice.user.name ? invoice.user.name : 'Customer';
+        let customerPhone = invoice.user && invoice.user.mobile ? invoice.user.mobile : '';
+        doc.fontSize(10).font('Helvetica').fillColor('#000').text(customerName + (customerPhone ? ' - ' + customerPhone : ''), 30, 190);
+
         // Items Table Header
-        const tableTop = 180;
+        const tableTop = 220;
         doc.rect(30, tableTop, pageWidth - 60, 30).fill('#f8fafc').strokeColor('#000').lineWidth(1).stroke();
         
         doc.moveTo(70, tableTop).lineTo(70, tableTop + 30).stroke(); // SL NO

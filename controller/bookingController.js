@@ -901,127 +901,191 @@ exports.downloadReceipt = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Booking not found' });
         }
 
-        const doc = new PDFDocument({ margin: 0, size: 'A4' });
+        const doc = new PDFDocument({ margin: 30, size: 'A4' });
         res.setHeader('Content-disposition', 'attachment; filename=Invoice_' + booking.booking_id + '.pdf');
         res.setHeader('Content-type', 'application/pdf');
         doc.pipe(res);
 
-        try {
-            const watermarkPath = 'd:/Desktop/evRental/evRental/evbusiness/assets/app_icon.png';
-            if (fs.existsSync(watermarkPath)) {
-                doc.save();
-                doc.opacity(0.1);
-                doc.image(watermarkPath, (doc.page.width - 350) / 2, (doc.page.height - 350) / 2, { width: 350 });
-                doc.opacity(1);
-                doc.restore();
-            }
-        } catch (_) {}
-
         const pageWidth = doc.page.width;
-        const pageHeight = doc.page.height;
+
+        const numToWords = (n) => {
+            const a = ['','One ','Two ','Three ','Four ', 'Five ','Six ','Seven ','Eight ','Nine ','Ten ','Eleven ','Twelve ','Thirteen ','Fourteen ','Fifteen ','Sixteen ','Seventeen ','Eighteen ','Nineteen '];
+            const b = ['', '', 'Twenty','Thirty','Forty','Fifty', 'Sixty','Seventy','Eighty','Ninety'];
+            if ((n = n.toString()).length > 9) return 'overflow';
+            let str = ('000000000' + n).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
+            if (!str) return; let text = '';
+            text += (str[1] != 0) ? (a[Number(str[1])] || b[str[1][0]] + ' ' + a[str[1][1]]) + 'Crore ' : '';
+            text += (str[2] != 0) ? (a[Number(str[2])] || b[str[2][0]] + ' ' + a[str[2][1]]) + 'Lakh ' : '';
+            text += (str[3] != 0) ? (a[Number(str[3])] || b[str[3][0]] + ' ' + a[str[3][1]]) + 'Thousand ' : '';
+            text += (str[4] != 0) ? (a[Number(str[4])] || b[str[4][0]] + ' ' + a[str[4][1]]) + 'Hundred ' : '';
+            text += (str[5] != 0) ? ((text != '') ? 'and ' : '') + (a[Number(str[5])] || b[str[5][0]] + ' ' + a[str[5][1]]) + 'Only' : 'Only';
+            return text;
+        };
+
+        // Header: TRIS ELECTRIC
+        doc.fontSize(20).font('Helvetica-Bold').fillColor('#000').text('TRIS ELECTRIC', 30, 40);
+        doc.fontSize(12).fillColor('#1e3a8a').text('JUNGLEBAN ENTERPRISES', 30, 62);
+        doc.fontSize(10).fillColor('#334155').font('Helvetica');
+        doc.text('Prem Nagar, Alambagh, Lucknow', 30, 80);
+        doc.text('Uttar Pradesh - 226005', 30, 95);
+        doc.text('GSTIN : 09DTTPS1540G1Z7', 30, 110);
+
+        // Right Header: TAX INVOICE
+        doc.fontSize(20).font('Helvetica').fillColor('#1e3a8a').text('TAX INVOICE', 0, 40, { align: 'right', width: pageWidth - 30 });
+        
+        doc.fontSize(10).fillColor('#334155');
+        const rightColX = pageWidth - 210;
+        const startY = 70;
+        doc.text('Invoice No.', rightColX, startY); doc.text(': ' + booking.booking_id, rightColX + 75, startY);
+        doc.text('Invoice Date', rightColX, startY + 15); doc.text(': ' + new Date(booking.createdAt).toLocaleDateString('en-IN'), rightColX + 75, startY + 15);
+        doc.text('Terms', rightColX, startY + 30); doc.text(': Due on Receipt', rightColX + 75, startY + 30);
+        doc.text('Due Date', rightColX, startY + 45); doc.text(': ' + new Date(booking.createdAt).toLocaleDateString('en-IN'), rightColX + 75, startY + 45);
+        doc.text('P.O. #', rightColX, startY + 60); doc.text(': ' + booking.booking_id, rightColX + 75, startY + 60);
+        doc.text('Place Of Supply', rightColX, startY + 75); doc.text(': Uttar Pradesh (09)', rightColX + 75, startY + 75);
+
+        // Separator Line
+        doc.moveTo(30, 160).lineTo(pageWidth - 30, 160).strokeColor('#2563eb').lineWidth(2).stroke();
+
+        // Buyer (Bill To)
+        doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e3a8a').text('Buyer (Bill To)', 30, 175);
+        let customerName = booking.user && booking.user.name ? booking.user.name : 'Customer';
+        let customerPhone = booking.user && booking.user.mobile ? booking.user.mobile : '';
+        doc.fontSize(10).font('Helvetica').fillColor('#000').text(customerName + (customerPhone ? ' - ' + customerPhone : ''), 30, 190);
+
+        // Items Table Header
+        const tableTop = 220;
+        doc.rect(30, tableTop, pageWidth - 60, 30).fill('#f8fafc').strokeColor('#000').lineWidth(1).stroke();
+        
+        doc.moveTo(70, tableTop).lineTo(70, tableTop + 30).stroke(); // SL NO
+        doc.moveTo(270, tableTop).lineTo(270, tableTop + 30).stroke(); // DESC
+        doc.moveTo(330, tableTop).lineTo(330, tableTop + 30).stroke(); // HSN
+        doc.moveTo(390, tableTop).lineTo(390, tableTop + 30).stroke(); // QTY
+        doc.moveTo(470, tableTop).lineTo(470, tableTop + 30).stroke(); // RATE
+        
+        doc.fillColor('#000').font('Helvetica-Bold').fontSize(9);
+        doc.text('SL NO.', 30, tableTop + 10, { width: 40, align: 'center' });
+        doc.text('SERVICES & DESCRIPTION', 70, tableTop + 10, { width: 200, align: 'center' });
+        doc.text('HSN/SAC', 270, tableTop + 10, { width: 60, align: 'center' });
+        doc.text('QTY', 330, tableTop + 10, { width: 60, align: 'center' });
+        doc.text('RATE (Rs)', 390, tableTop + 10, { width: 80, align: 'center' });
+        doc.text('AMOUNT (Rs)', 470, tableTop + 10, { width: pageWidth - 470 - 30, align: 'center' });
+
+        let currentY = tableTop + 30;
+        
         const isInstallment = booking.payment_method === 'installments';
         const allInstallments = isInstallment ? (booking.payment_installments || []) : [];
         const paidInstallments = allInstallments.filter(i => i.status === 'paid');
         const pendingInstallments = allInstallments.filter(i => i.status !== 'paid');
-
-        // Header
-        doc.moveTo(50, 40).lineTo(pageWidth - 50, 40).strokeColor('#333333').lineWidth(2).stroke();
-        doc.fontSize(28).font('Helvetica-Bold').fillColor('#333333').text('INVOICE', 50, 60);
-        doc.fontSize(10).font('Helvetica').fillColor('#666666').text('TRIS Electric - EV Rentals', 50, 95);
-
-        // Billed To
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#333333').text('Billed To:', 380, 60);
-        doc.fontSize(12).text((booking.user && booking.user.name) ? booking.user.name : 'Customer', 380, 75);
-        doc.fontSize(10).font('Helvetica').fillColor('#666666');
-        doc.text((booking.user && booking.user.mobile) ? booking.user.mobile : '', 380, 90);
-        doc.text((booking.user && booking.user.email) ? booking.user.email : '', 380, 105);
-
-        // Meta
-        doc.moveTo(50, 140).lineTo(pageWidth - 50, 140).strokeColor('#EEEEEE').lineWidth(1).stroke();
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#333333');
-        doc.text('BOOKING ID:', 50, 160);
-        doc.font('Helvetica').fillColor('#666666').text(booking.booking_id, 130, 160);
-        doc.font('Helvetica-Bold').fillColor('#333333').text('DATE:', 220, 160);
-        doc.font('Helvetica').fillColor('#666666').text(new Date().toLocaleDateString(), 260, 160);
-        doc.font('Helvetica-Bold').fillColor('#333333').text('TYPE:', 380, 160);
-        doc.font('Helvetica').fillColor('#666666').text(isInstallment ? 'Installment Plan' : (booking.payment_method || 'Online'), 420, 160);
-
-        // Table Header
-        const tableTop = 200;
-        doc.rect(50, tableTop, pageWidth - 100, 35).fill('#333333');
-        doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(11);
-        doc.text('DESCRIPTION', 60, tableTop + 12);
-        doc.text('DUE DATE', 210, tableTop + 12);
-        doc.text('PAID DATE', 280, tableTop + 12);
-        doc.text('RENT', 360, tableTop + 12);
-        doc.text('GST (5%)', 420, tableTop + 12);
-        doc.text('TOTAL', 480, tableTop + 12, { width: 60, align: 'right' });
-
-        let currentY = tableTop + 55;
-
-        const drawRow = (desc, dueDate, paidDate, rentStr, gstStr, amount, isPaid) => {
-            doc.font('Helvetica').fillColor(isPaid ? '#166534' : '#92400e').fontSize(10);
-            doc.text(desc, 60, currentY, { width: 140 });
-            doc.fillColor('#666666').text(dueDate, 210, currentY, { width: 60 });
-            doc.text(paidDate, 280, currentY, { width: 70 });
-            doc.text(rentStr, 360, currentY, { width: 50 });
-            doc.text(gstStr, 420, currentY, { width: 50 });
-            doc.fillColor(isPaid ? '#10b981' : '#f59e0b').font('Helvetica-Bold')
-               .text('INR ' + Number(amount).toFixed(2), 480, currentY, { width: 60, align: 'right' });
-            doc.moveTo(50, currentY + 22).lineTo(pageWidth - 50, currentY + 22).strokeColor('#EEEEEE').lineWidth(1).stroke();
-            currentY += 38;
-        };
-
+        
+        let finalAmount = booking.grand_total || 0;
+        let paymentMade = booking.total_paid || 0;
+        let balanceDue = finalAmount - paymentMade;
+        
         if (isInstallment) {
-            paidInstallments.forEach(inst => {
-                const isPaid = inst.status === 'paid';
-                const dueStr = inst.due_date ? new Date(inst.due_date).toLocaleDateString('en-IN') : '-';
-                const paidStr = isPaid && inst.paid_date ? new Date(inst.paid_date).toLocaleDateString('en-IN') : (isPaid ? 'Paid' : 'Pending');
-                const gst = Number(inst.amount) * 5 / 105;
-                const rent = Number(inst.amount) - gst;
-                const gstVal = 'INR ' + gst.toFixed(2);
-                const rentVal = 'INR ' + rent.toFixed(2);
-                drawRow('Week ' + inst.installment_no + ' - Installment', dueStr, paidStr, rentVal, gstVal, inst.amount, isPaid);
-            });
+            finalAmount = paidInstallments.reduce((s, i) => s + Number(i.amount || 0), 0);
+            paymentMade = finalAmount;
+            balanceDue = pendingInstallments.reduce((s, i) => s + Number(i.amount || 0), 0);
         } else {
-            const planName = booking.plan ? booking.plan.plan_name : 'Rental Plan';
-            const gst = Number(booking.total_amount || 0) * 5 / 105;
-            const rent = Number(booking.total_amount || 0) - gst;
-            const gstVal = 'INR ' + gst.toFixed(2);
-            const rentVal = 'INR ' + rent.toFixed(2);
-            drawRow('EV Rental - ' + planName, new Date(booking.start_date).toLocaleDateString('en-IN'), new Date().toLocaleDateString('en-IN'), rentVal, gstVal, booking.total_amount || 0, true);
-            if ((booking.gst_amount || 0) > 0) drawRow('GST (5%)', '-', '-', '-', '-', booking.gst_amount, true);
-            if (booking.security_deposit > 0) drawRow('Security Deposit', '-', '-', '-', '-', booking.security_deposit, true);
-            if (booking.late_fee > 0) drawRow('Late Fee', '-', '-', '-', '-', booking.late_fee, false);
-            if ((booking.discount_amount || 0) > 0) drawRow('Discount Applied', '-', '-', '-', '-', -booking.discount_amount, true);
+             if (balanceDue < 0) balanceDue = 0;
         }
 
-        // Summary Box
-        currentY += 10;
-        if (isInstallment) {
-            const totalPaid = paidInstallments.reduce((s, i) => s + Number(i.amount || 0), 0);
-            const totalPending = pendingInstallments.reduce((s, i) => s + Number(i.amount || 0), 0);
-            doc.rect(50, currentY, pageWidth - 100, 80).fill('#F8F9FA');
-            doc.font('Helvetica-Bold').fillColor('#333333').fontSize(11);
-            doc.text('Total Paid So Far:', 70, currentY + 12);
-            doc.fillColor('#10b981').text('INR ' + totalPaid.toFixed(2), 200, currentY + 12);
-            doc.fillColor('#333333').text('Remaining Due:', 70, currentY + 32);
-            doc.fillColor('#ef4444').text('INR ' + totalPending.toFixed(2), 200, currentY + 32);
-            doc.fillColor('#333333').text('Grand Total:', 70, currentY + 52);
-            doc.fillColor('#1d4ed8').text('INR ' + booking.grand_total.toFixed(2), 200, currentY + 52);
-        } else {
-            doc.rect(380, currentY, 170, 40).fill('#F8F9FA');
-            doc.font('Helvetica-Bold').fillColor('#333333').fontSize(14);
-            doc.text('TOTAL PAID:', 395, currentY + 12);
-            doc.fillColor('#10b981').text('INR ' + booking.grand_total.toFixed(2), 470, currentY + 12, { width: 70, align: 'right' });
-        }
+        let totalTaxableAmount = finalAmount * 100 / 105;
+        let totalGstAmount = totalTaxableAmount * 0.025; // per CGST/SGST
 
-        // Footer
-        const footerY = pageHeight - 80;
-        doc.moveTo(50, footerY).lineTo(pageWidth - 50, footerY).strokeColor('#DDDDDD').lineWidth(1).stroke();
-        doc.fontSize(9).font('Helvetica-Oblique').fillColor('#999999');
-        doc.text('Thank you for choosing TRIS Electric.', 50, footerY + 15, { align: 'center' });
-        doc.text('This is a computer-generated invoice and requires no physical signature.', 50, footerY + 30, { align: 'center' });
+        let planName = booking.plan ? booking.plan.plan_name : 'Rental Plan';
+        let asset = booking.vehicle ? booking.vehicle.registration_number : '';
+
+        const rowHeight = 40;
+        doc.rect(30, currentY, pageWidth - 60, rowHeight).stroke();
+        doc.moveTo(70, currentY).lineTo(70, currentY + rowHeight).stroke();
+        doc.moveTo(270, currentY).lineTo(270, currentY + rowHeight).stroke();
+        doc.moveTo(330, currentY).lineTo(330, currentY + rowHeight).stroke();
+        doc.moveTo(390, currentY).lineTo(390, currentY + rowHeight).stroke();
+        doc.moveTo(470, currentY).lineTo(470, currentY + rowHeight).stroke();
+
+        doc.font('Helvetica').fontSize(9);
+        doc.text('1', 30, currentY + 10, { width: 40, align: 'center' });
+        
+        let descText = planName;
+        if (isInstallment) descText += ' (Installments)';
+        
+        doc.font('Helvetica-Bold').text(descText, 75, currentY + 10, { width: 190 });
+        doc.font('Helvetica').text('Order #' + booking.booking_id + ' - Asset: ' + asset, 75, currentY + 22, { width: 190 });
+        
+        doc.text('997311', 270, currentY + 10, { width: 60, align: 'center' });
+        doc.text('1 Nos', 330, currentY + 10, { width: 60, align: 'center' });
+        doc.text(totalTaxableAmount.toFixed(2), 390, currentY + 10, { width: 75, align: 'right' });
+        doc.text(totalTaxableAmount.toFixed(2), 470, currentY + 10, { width: pageWidth - 470 - 35, align: 'right' });
+
+        // Bottom section
+        const botTop = currentY + rowHeight + 20;
+
+        // Bottom Left
+        doc.rect(30, botTop, 250, 30).strokeColor('#93c5fd').stroke();
+        doc.text('Quantity in Total', 40, botTop + 10);
+        doc.font('Helvetica-Bold').text(':   1 Nos', 130, botTop + 10);
+
+        doc.rect(30, botTop + 40, 250, 40).strokeColor('#93c5fd').stroke();
+        doc.fillColor('#1e3a8a').text('Total In Words', 40, botTop + 50);
+        doc.font('Helvetica').fillColor('#475569').text('Indian Rupee ' + numToWords(Math.round(finalAmount)), 40, botTop + 65);
+
+        doc.rect(30, botTop + 90, 250, 70).strokeColor('#93c5fd').stroke();
+        doc.rect(30, botTop + 90, 130, 20).fill('#1e3a8a');
+        doc.fillColor('#fff').font('Helvetica-Bold').text("Company's Bank Details", 35, botTop + 96);
+        doc.fillColor('#334155').font('Helvetica').text('Bank Name', 35, botTop + 120); doc.text(': Canara Bank', 105, botTop + 120);
+        doc.text('A/c No.', 35, botTop + 135); doc.text(': 120024164312', 105, botTop + 135);
+        doc.text('Branch & IFSC', 35, botTop + 150); doc.text(': Alambagh Branch & CNRB0001258', 105, botTop + 150);
+
+        doc.rect(30, botTop + 170, 250, 50).strokeColor('#93c5fd').stroke();
+        doc.rect(30, botTop + 170, 80, 20).fill('#1e3a8a');
+        doc.fillColor('#fff').font('Helvetica-Bold').text("Declaration :", 35, botTop + 176);
+        doc.fillColor('#475569').font('Helvetica').text('We declare that this invoice shows the actual price of the Services described and that all particulars are true and correct.', 35, botTop + 195, { width: 240 });
+
+        // Bottom Right
+        const rightX = 310;
+        const rw = pageWidth - 30 - 310;
+        
+        doc.fillColor('#000').font('Helvetica').text('Total Taxable Amount', rightX, botTop);
+        doc.text(totalTaxableAmount.toFixed(2), rightX, botTop, { align: 'right', width: rw });
+
+        doc.moveTo(rightX, botTop + 15).lineTo(pageWidth - 30, botTop + 15).strokeColor('#cbd5e1').lineWidth(1).stroke();
+        doc.font('Helvetica-Bold').text('CGST 2.5%', rightX, botTop + 25);
+        doc.font('Helvetica').text(totalGstAmount.toFixed(2), rightX, botTop + 25, { align: 'right', width: rw });
+
+        doc.moveTo(rightX, botTop + 40).lineTo(pageWidth - 30, botTop + 40).stroke();
+        doc.font('Helvetica-Bold').text('SGST 2.5%', rightX, botTop + 50);
+        doc.font('Helvetica').text(totalGstAmount.toFixed(2), rightX, botTop + 50, { align: 'right', width: rw });
+
+        doc.moveTo(rightX, botTop + 65).lineTo(pageWidth - 30, botTop + 65).strokeColor('#000').stroke();
+        doc.fontSize(12).font('Helvetica-Bold').text('Total', rightX, botTop + 80);
+        doc.text('Rs ' + finalAmount.toFixed(2), rightX, botTop + 80, { align: 'right', width: rw });
+
+        doc.moveTo(rightX, botTop + 100).lineTo(pageWidth - 30, botTop + 100).strokeColor('#cbd5e1').stroke();
+        doc.fontSize(9).font('Helvetica').text('Payment Made (-)', rightX, botTop + 115);
+        doc.text(paymentMade.toFixed(2), rightX, botTop + 115, { align: 'right', width: rw });
+
+        doc.moveTo(rightX, botTop + 130).lineTo(pageWidth - 30, botTop + 130).strokeColor('#000').stroke();
+        doc.fontSize(11).font('Helvetica-Bold').text('Balance Due', rightX, botTop + 145);
+        doc.text('Rs ' + balanceDue.toFixed(2), rightX, botTop + 145, { align: 'right', width: rw });
+
+        // Signature
+        doc.fontSize(10).font('Helvetica').text('for ', rightX, botTop + 210, { continued: true }).font('Helvetica-Bold').text('TRIS ELECTRIC', { align: 'center', width: rw });
+        doc.fillColor('#1e3a8a').text('JUNGLEBAN ENTERPRISES', rightX, botTop + 225, { align: 'center', width: rw });
+        
+        // Stamp Circle
+        doc.circle(rightX + rw/2, botTop + 270, 35).lineWidth(2).strokeColor('#1e3a8a').stroke();
+        doc.circle(rightX + rw/2, botTop + 270, 30).lineWidth(1).strokeColor('#1e3a8a').stroke();
+        
+        doc.save();
+        doc.translate(rightX + rw/2, botTop + 270);
+        doc.rotate(-20);
+        doc.fontSize(7).text('TRIS ELECTRIC', -25, -10, { width: 50, align: 'center' });
+        doc.text('JUNGLEBAN\nENTERPRISES', -25, 0, { width: 50, align: 'center' });
+        doc.restore();
+
+        doc.moveTo(rightX + 40, botTop + 325).lineTo(rightX + rw - 40, botTop + 325).dash(2, {space: 2}).strokeColor('#000').stroke();
+        doc.undash();
+        doc.fillColor('#000').fontSize(10).font('Helvetica').text('Authorized signatory', rightX, botTop + 330, { align: 'center', width: rw });
 
         doc.end();
     } catch (error) {

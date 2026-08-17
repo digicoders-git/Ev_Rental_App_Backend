@@ -87,8 +87,8 @@ If you have any grievances, complaints, or requests related to personal data or 
 Name: Rajat Srivastava
 Designation: Admin
 Email: Suppor.Tris@gmail.com
-Address: Prem Nagar, Alambagh, Lucknow, Uttar Pradesh, 226005
-Phone: +919453169279; Working Hours: 10:30AM - 6:00PM
+Address: Jungleban Enterprises, Alambagh, Lucknow, Uttar Pradesh, 226005
+Phone: +918840204114; Working Hours: 10:30AM - 6:00PM
 
 We will acknowledge and address your grievance within the timelines prescribed by applicable law. You may also submit requests via any consent manager recognized under the DPDP Act, where available.
 17. Updates to Terms and the App
@@ -112,8 +112,8 @@ Electronic records and electronic acceptance of these Terms are valid and enforc
 For any queries regarding these Terms or the App, please contact:
 JungleBan Enterprises 
 Support.Tris@gmail.com
-+91 9453169279
-569 cha / 92 Prem Nagar, Alambagh, Lucknow 
++91 8840204114
+Jungleban Enterprises, Alambagh, Lucknow, Uttar Pradesh – 226005
 
 Important Notice
 By clicking "Accept" or otherwise accepting these Terms, you confirm that you have read, understood, and agree to be bound by them. If you are accepting on behalf of a business, you represent and warrant that you have the authority to bind that business to these Terms.

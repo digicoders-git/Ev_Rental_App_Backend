@@ -98,9 +98,18 @@ exports.requestWithdrawal = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Insufficient available balance (You have pending withdrawal requests)' });
         }
 
+        const service_fee_percentage = 8;
+        // The requested amount is what gets deducted from the wallet (which already had the 8% removed)
+        const net_amount = amount;
+        const gross_amount = net_amount / (1 - (service_fee_percentage / 100));
+        const service_fee_amount = gross_amount - net_amount;
+
         const withdrawal = await FranchiseWithdrawal.create({
             franchise: franchiseId,
-            amount
+            amount: net_amount, // Store net as the main amount so deductions work correctly
+            service_fee_percentage,
+            service_fee_amount,
+            net_amount
         });
 
         // Payment is NOT deducted immediately. It will be deducted when admin approves it.
@@ -366,9 +375,17 @@ exports.releaseFundsAdmin = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Insufficient wallet balance' });
         }
 
+        const service_fee_percentage = 8;
+        const net_amount = withdrawAmount;
+        const gross_amount = net_amount / (1 - (service_fee_percentage / 100));
+        const service_fee_amount = gross_amount - net_amount;
+
         const withdrawal = await FranchiseWithdrawal.create({
             franchise: franchiseId,
-            amount: withdrawAmount,
+            amount: net_amount,
+            service_fee_percentage,
+            service_fee_amount,
+            net_amount,
             status: 'processing'
         });
 

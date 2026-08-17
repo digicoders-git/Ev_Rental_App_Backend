@@ -473,7 +473,7 @@ exports.getFranchiseBookings = async (req, res) => {
         const bookings = await Booking.find({ franchise: franchiseId })
             .populate({
                 path: 'user',
-                select: 'name mobile email city isKycVerified profile_picture referred_by notes status credit_score',
+                select: 'name mobile email city isKycVerified profile_picture referred_by notes status credit_score driver_id',
                 populate: { path: 'referred_by', select: 'driver_id' }
             })
             .populate('vehicle', 'vehicle_name registration_number vehicle_id')

@@ -10,6 +10,18 @@ const franchiseWithdrawalSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
+    service_fee_percentage: {
+        type: Number,
+        default: 8
+    },
+    service_fee_amount: {
+        type: Number,
+        default: 0
+    },
+    net_amount: {
+        type: Number,
+        default: 0
+    },
     status: {
         type: String,
         enum: ['pending', 'approved', 'rejected', 'processing', 'released', 'failed'],

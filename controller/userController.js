@@ -249,7 +249,7 @@ exports.getAllUsers = async (req, res) => {
         const allBookings = await Booking.find()
             .populate('user')
             .populate('vehicle', 'registration_number vehicle_name')
-            .populate('franchise', 'store_name')
+            .populate('franchise', 'store_name franchise_id store_id')
             .lean()
             .sort({ createdAt: -1 });
 
@@ -271,7 +271,7 @@ exports.getAllUsers = async (req, res) => {
                     // Franchise details
                     let franchiseName = 'Main Branch';
                     if (b.franchise && b.franchise.store_name && b.franchise.store_name.trim() !== '') {
-                        franchiseName = b.franchise.store_name;
+                        franchiseName = `${b.franchise.store_name} (${b.franchise.franchise_id || b.franchise.store_id || 'Main Hub'})`;
                     }
                     userObj.franchise_name = franchiseName;
                     

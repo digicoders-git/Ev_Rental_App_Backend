@@ -432,7 +432,7 @@ exports.getAllBookings = async (req, res) => {
                 populate: { path: 'referred_by', select: 'driver_id' }
             })
             .populate('vehicle', 'vehicle_name registration_number franchise vehicle_id')
-            .populate('franchise', 'store_name')
+            .populate('franchise', 'store_name franchise_id store_id')
             .populate('plan', 'plan_name')
             .sort('-createdAt');
 
@@ -512,7 +512,7 @@ exports.getBookingById = async (req, res) => {
         const booking = await Booking.findById(req.params.id)
             .populate('user', 'name mobile email')
             .populate('vehicle', 'vehicle_name registration_number thumbnail_image brand')
-            .populate('franchise', 'store_name address city')
+            .populate('franchise', 'store_name address city franchise_id store_id')
             .populate('plan');
 
         if (!booking) {

@@ -5,6 +5,11 @@ const franchiseStoreSchema = new mongoose.Schema({
         type: String,
         unique: true
     },
+    franchise_id: {
+        type: String,
+        unique: true,
+        sparse: true
+    },
     store_name: {
         type: String,
         required: [true, 'Please add store name'],
@@ -124,11 +129,37 @@ franchiseStoreSchema.methods.matchPassword = async function (enteredPassword) {
     return await bcrypt.compare(enteredPassword, this.password);
 };
 
-// Generate unique store_id
-franchiseStoreSchema.pre('save', async function() {
+// Generate unique store_id and franchise_id
+franchiseStoreSchema.pre('save', async function () {
     if (!this.store_id) {
         const dateStr = Date.now().toString();
         this.store_id = `STORE-${dateStr.substring(dateStr.length - 6)}`;
+    }
+
+    if (!this.franchise_id) {
+        try {
+            // Find the franchise with the highest franchise_id
+            const lastFranchise = await this.constructor.findOne(
+                { franchise_id: { $exists: true, $ne: null } },
+                'franchise_id',
+                { sort: { franchise_id: -1 } }
+            );
+
+            if (lastFranchise && lastFranchise.franchise_id) {
+                // Extract number, e.g. "FRN001" -> 1
+                const match = lastFranchise.franchise_id.match(/^FRN(\d+)$/);
+                if (match) {
+                    const lastNumber = parseInt(match[1], 10);
+                    this.franchise_id = `FRN${String(lastNumber + 1).padStart(3, '0')}`;
+                } else {
+                    this.franchise_id = 'FRN001';
+                }
+            } else {
+                this.franchise_id = 'FRN001';
+            }
+        } catch (error) {
+            throw error;
+        }
     }
 });
 

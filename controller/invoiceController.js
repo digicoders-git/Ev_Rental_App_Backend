@@ -20,7 +20,7 @@ exports.getInvoiceByBooking = async (req, res) => {
         let invoices = await Invoice.find({ booking: bookingId })
             .populate('booking')
             .populate('user', 'name mobile email')
-            .populate('franchise', 'store_name owner_name mobile email address city state zip_code')
+            .populate('franchise', 'store_name owner_name mobile email address city state zip_code franchise_id store_id')
             .sort('createdAt');
 
         // If no invoices exist AND it's either not installments, OR it's an old installments booking with payments made
@@ -48,7 +48,7 @@ exports.getInvoiceByBooking = async (req, res) => {
             const populatedInvoice = await Invoice.findById(newInvoice._id)
                 .populate('booking')
                 .populate('user', 'name mobile email')
-                .populate('franchise', 'store_name owner_name mobile email address city state zip_code');
+                .populate('franchise', 'store_name owner_name mobile email address city state zip_code franchise_id store_id');
             
             invoices = [populatedInvoice];
         } 
@@ -171,7 +171,7 @@ exports.getAllInvoices = async (req, res) => {
         const invoices = await Invoice.find(query)
             .populate('user', 'name mobile')
             .populate({ path: 'booking', populate: [{ path: 'vehicle', select: 'vehicle_name registration_number' }, { path: 'plan', select: 'plan_name' }] })
-            .populate('franchise', 'store_name state')
+            .populate('franchise', 'store_name state franchise_id store_id')
             .sort('-createdAt');
 
         // Dynamically sync status for Franchise/Admin too
@@ -470,7 +470,7 @@ exports.downloadBulkInvoiceReport = async (req, res) => {
         const invoices = await Invoice.find(query)
             .populate('user', 'name mobile')
             .populate({ path: 'booking', populate: [{ path: 'vehicle', select: 'vehicle_name registration_number' }, { path: 'plan', select: 'plan_name' }] })
-            .populate('franchise', 'store_name state')
+            .populate('franchise', 'store_name state franchise_id store_id')
             .sort('-createdAt');
 
         const doc = new PDFDocument({ margin: 30, size: 'A4' });

@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+﻿const mongoose = require('mongoose');
 require('dotenv').config();
 
 const globalSettingSchema = new mongoose.Schema({
@@ -12,7 +12,7 @@ const GlobalSetting = mongoose.model('GlobalSetting', globalSettingSchema);
 const termsText = `Terms and Conditions
 
 Click-Wrap Terms and Conditions for the App
-These Terms constitute a legally binding agreement between you and Jungleban Enterprises., a Proprietorship incorporated in India with its registered office at 569 cha / 92 Prem nagar, alambagh, Lucknow, Uttar Pradesh 226005, governing your access to and use of the Company's mobile and/or web application, and related services.
+These Terms constitute a legally binding agreement between you and Jungleban Enterprises., a Proprietorship incorporated in India with its registered office at Jungleban Enterprises, Alambagh, Lucknow, Uttar Pradesh - 226005, governing your access to and use of the Company's mobile and/or web application, and related services.
 By clicking "Accept" or using the App, you acknowledge that you have read, understood, and agree to be bound by these Terms.
 1.Eligibility
 You represent that you are at least 18 years of age and legally competent to enter a binding contract under the laws of India as per applicable law.

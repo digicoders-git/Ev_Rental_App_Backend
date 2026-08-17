@@ -1,4 +1,4 @@
-const Invoice = require('../models/invoiceModel');
+﻿const Invoice = require('../models/invoiceModel');
 const Booking = require('../models/bookingModel');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
@@ -240,7 +240,7 @@ exports.downloadInvoicePDF = async (req, res) => {
         doc.fontSize(20).font('Helvetica-Bold').fillColor('#000').text('TRIS ELECTRIC', 30, 40);
         doc.fontSize(12).fillColor('#1e3a8a').text('JUNGLEBAN ENTERPRISES', 30, 62);
         doc.fontSize(10).fillColor('#334155').font('Helvetica');
-        doc.text('Prem Nagar, Alambagh, Lucknow', 30, 80);
+        doc.text('Jungleban Enterprises, Alambagh, Lucknow', 30, 80);
         doc.text('Uttar Pradesh - 226005', 30, 95);
         doc.text('GSTIN : 09DTTPS1540G1Z7', 30, 110);
 

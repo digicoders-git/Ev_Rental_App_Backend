@@ -108,13 +108,25 @@ exports.getAllInvoices = async (req, res) => {
                     });
                 }
 
+                let currentStatus = invoice.status;
+                if (booking.payment_method !== 'installments') {
+                    currentStatus = booking.payment_status === 'paid' ? 'paid' : invoice.status;
+                } else if (booking.total_paid >= booking.grand_total) {
+                    currentStatus = 'paid';
+                }
+
+                if (invoice.status !== currentStatus) {
+                    invoice.status = currentStatus;
+                    await invoice.save();
+                }
+
                 results.push({
                     _id: invoice._id,
                     invoice_number: invoice.invoice_number,
                     amount: booking.payment_method === 'installments'
                         ? booking.payment_installments.filter(i => i.status === 'paid').reduce((s, i) => s + Number(i.amount || 0), 0)
                         : booking.grand_total,
-                    status: invoice.status,
+                    status: currentStatus,
                     createdAt: invoice.createdAt,
                     booking: {
                         _id: booking._id,

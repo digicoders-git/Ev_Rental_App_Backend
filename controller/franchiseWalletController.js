@@ -44,18 +44,10 @@ exports.getWalletDetails = async (req, res) => {
         // Net revenue = gross - 8% service fee
         const totalNetRevenue = Number((totalGrossRevenue - serviceFee).toFixed(2));
 
-        // Dynamically calculate the actual Available Balance
-        // As per user request, pending withdrawals should NOT reduce the displayed available balance until approved by admin.
-        // But we MUST check against (balance - pendingWithdrawn) when requesting a new withdrawal to prevent overdrawing.
-        const calculatedBalance = totalNetRevenue - totalWithdrawn;
-        const balance = Number((calculatedBalance > 0 ? calculatedBalance : 0).toFixed(2));
-
-        // Auto-correct the franchise model cache if needed
-        if (franchise.wallet_balance !== balance || franchise.total_gross_revenue !== totalGrossRevenue) {
-            franchise.wallet_balance = balance;
-            franchise.total_gross_revenue = totalGrossRevenue;
-            await franchise.save();
-        }
+        // Use the actual wallet_balance from the FranchiseStore model as the source of truth,
+        // BUT subtract pending withdrawals so the UI shows the real withdrawable amount.
+        const calculatedBalance = (franchise.wallet_balance || 0) - pendingWithdrawn;
+        const balance = calculatedBalance > 0 ? calculatedBalance : 0;
 
         res.status(200).json({
             success: true,
@@ -365,14 +357,21 @@ exports.releaseFundsAdmin = async (req, res) => {
 
         if (!franchise) return res.status(404).json({ success: false, message: 'Franchise not found' });
 
-        const withdrawAmount = amount ? Number(amount) : franchise.wallet_balance;
+        const pendingResult = await FranchiseWithdrawal.aggregate([
+            { $match: { franchise: franchise._id, status: { $in: ['pending', 'processing'] } } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const pendingWithdrawn = pendingResult.length > 0 ? pendingResult[0].total : 0;
+        const realAvailableBalance = (franchise.wallet_balance || 0) - pendingWithdrawn;
+
+        const withdrawAmount = amount ? Number(amount) : realAvailableBalance;
 
         if (withdrawAmount <= 0) {
             return res.status(400).json({ success: false, message: 'Wallet balance is empty or invalid amount' });
         }
 
-        if (withdrawAmount > franchise.wallet_balance) {
-            return res.status(400).json({ success: false, message: 'Insufficient wallet balance' });
+        if (withdrawAmount > realAvailableBalance) {
+            return res.status(400).json({ success: false, message: 'Insufficient wallet balance (accounting for pending requests)' });
         }
 
         const service_fee_percentage = 8;
@@ -389,16 +388,7 @@ exports.releaseFundsAdmin = async (req, res) => {
             status: 'processing'
         });
 
-        // Deduct from wallet balance immediately
-        franchise.wallet_balance -= withdrawAmount;
-        await franchise.save();
-
-        await FranchiseWalletTransaction.create({
-            franchise: franchiseId,
-            amount: withdrawAmount,
-            type: 'debit',
-            description: `Settlement Initiated (${withdrawal.withdrawal_id})`
-        });
+        // Payment is NOT deducted immediately. It will be deducted when admin approves it (updateWithdrawalStatusAdmin)
 
         await sendNotification({
             recipient: franchise._id,

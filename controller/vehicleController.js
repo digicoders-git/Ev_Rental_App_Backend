@@ -82,7 +82,7 @@ exports.getAllVehicles = async (req, res) => {
         
         const allRecentBookings = await Booking.find({ 
             vehicle: { $exists: true, $ne: null }
-        }).populate('user', 'name mobile').sort('-updatedAt');
+        }).populate('user', 'name mobile driver_id').sort('-updatedAt');
 
         const vehicleBookingMap = {};
         for (const b of allRecentBookings) {
@@ -98,6 +98,7 @@ exports.getAllVehicles = async (req, res) => {
             if (latestBooking) {
                 vObj.driver_name = latestBooking.user?.name || 'Rider';
                 vObj.driver_phone = latestBooking.user?.mobile || '';
+                vObj.driver_id = latestBooking.user?.driver_id || 'N/A';
                 vObj.booking_start_date = latestBooking.start_date ? new Date(latestBooking.start_date).toISOString() : null;
                 const subDate = latestBooking.submission_date || latestBooking.actual_return_date || (latestBooking.return_status && latestBooking.return_status !== 'none' ? latestBooking.updatedAt : null);
                 vObj.submission_date = subDate ? new Date(subDate).toISOString() : null;
@@ -282,7 +283,7 @@ exports.getMyFranchiseVehicles = async (req, res) => {
 
         const allRecentBookings = await Booking.find({ 
             vehicle: { $exists: true, $ne: null }
-        }).populate('user', 'name mobile').sort('-updatedAt');
+        }).populate('user', 'name mobile driver_id').sort('-updatedAt');
 
         const vehicleBookingMap = {};
         for (const b of allRecentBookings) {
@@ -298,6 +299,7 @@ exports.getMyFranchiseVehicles = async (req, res) => {
             if (latestBooking) {
                 vObj.driver_name = latestBooking.user?.name || 'Rider';
                 vObj.driver_phone = latestBooking.user?.mobile || '';
+                vObj.driver_id = latestBooking.user?.driver_id || 'N/A';
                 vObj.booking_start_date = latestBooking.start_date ? new Date(latestBooking.start_date).toISOString() : null;
                 const subDate = latestBooking.submission_date || latestBooking.actual_return_date || (latestBooking.return_status && latestBooking.return_status !== 'none' ? latestBooking.updatedAt : null);
                 vObj.submission_date = subDate ? new Date(subDate).toISOString() : null;

@@ -75,6 +75,7 @@ exports.getDashboardStats = async (req, res) => {
                 weekly: revenueStats.length > 0 ? revenueStats[0].weekly : 0,
                 monthly: revenueStats.length > 0 ? revenueStats[0].monthly : 0,
                 yearly: revenueStats.length > 0 ? revenueStats[0].yearly : 0,
+                netProfit: revenueStats.length > 0 ? (revenueStats[0].total * 0.08) : 0,
             },
             categories: categoryStats,
             bookings: {

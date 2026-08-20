@@ -4,6 +4,8 @@ const FranchiseWalletTransaction = require('../models/franchiseWalletTransaction
 const User = require('../models/userModel');
 const { sendNotification } = require('../utils/notificationHelper');
 const { sendPushNotification } = require('../utils/fcmHelper');
+const Booking = require('../models/bookingModel');
+const mongoose = require('mongoose');
 
 // @desc    Get Franchise Wallet Balance & Transactions
 // @route   GET /api/franchise-enquiry/wallet
@@ -44,10 +46,16 @@ exports.getWalletDetails = async (req, res) => {
         // Net revenue = gross - 8% service fee
         const totalNetRevenue = Number((totalGrossRevenue - serviceFee).toFixed(2));
 
-        // Use the actual wallet_balance from the FranchiseStore model as the source of truth,
-        // BUT subtract pending withdrawals so the UI shows the real withdrawable amount.
-        const calculatedBalance = (franchise.wallet_balance || 0) - pendingWithdrawn;
-        const balance = calculatedBalance > 0 ? calculatedBalance : 0;
+        // The UI should show the full wallet balance until the admin explicitly approves and deducts it.
+        // We dynamically calculate it here to ensure it is 100% synced with bookings and withdrawals.
+        const calculatedBalance = totalNetRevenue - totalWithdrawn;
+        const balance = calculatedBalance > 0 ? Number(calculatedBalance.toFixed(2)) : 0;
+        
+        // Auto-sync the DB to fix any old mismatch
+        if (franchise.wallet_balance !== balance) {
+            franchise.wallet_balance = balance;
+            await franchise.save();
+        }
 
         res.status(200).json({
             success: true,
@@ -137,7 +145,9 @@ exports.requestWithdrawal = async (req, res) => {
 // @access  Private (Franchise)
 exports.getWithdrawals = async (req, res) => {
     try {
-        const withdrawals = await FranchiseWithdrawal.find({ franchise: req.franchise._id }).sort({ createdAt: -1 });
+        const withdrawals = await FranchiseWithdrawal.find({ franchise: req.franchise._id })
+            .populate('franchise')
+            .sort({ createdAt: -1 });
         res.status(200).json({ success: true, data: withdrawals });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -150,7 +160,7 @@ exports.getWithdrawals = async (req, res) => {
 exports.getAllWithdrawals = async (req, res) => {
     try {
         const withdrawals = await FranchiseWithdrawal.find()
-            .populate('franchise', 'store_name owner_name mobile email')
+            .populate('franchise')
             .sort({ createdAt: -1 });
         res.status(200).json({ success: true, data: withdrawals });
     } catch (error) {
@@ -352,7 +362,7 @@ exports.uploadFranchiseAgreement = async (req, res) => {
 // @access  Private (Admin)
 exports.releaseFundsAdmin = async (req, res) => {
     try {
-        const { franchiseId, amount } = req.body;
+        const { franchiseId, amount, startDate, endDate } = req.body;
         const franchise = await FranchiseStore.findById(franchiseId);
 
         if (!franchise) return res.status(404).json({ success: false, message: 'Franchise not found' });
@@ -364,7 +374,40 @@ exports.releaseFundsAdmin = async (req, res) => {
         const pendingWithdrawn = pendingResult.length > 0 ? pendingResult[0].total : 0;
         const realAvailableBalance = (franchise.wallet_balance || 0) - pendingWithdrawn;
 
-        const withdrawAmount = amount ? Number(amount) : realAvailableBalance;
+        let withdrawAmount = realAvailableBalance;
+
+        if (startDate && endDate) {
+            // Option 3: Date Range Release
+            const queryStartDate = new Date(startDate);
+            const queryEndDate = new Date(endDate);
+            queryEndDate.setHours(23, 59, 59, 999);
+
+            const revenueStats = await Booking.aggregate([
+                {
+                    $match: {
+                        franchise: new mongoose.Types.ObjectId(franchiseId),
+                        total_paid: { $gt: 0 },
+                        createdAt: { $gte: queryStartDate, $lte: queryEndDate }
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalRevenue: { $sum: '$total_paid' }
+                    }
+                }
+            ]);
+            
+            const dateRangeRevenue = revenueStats.length > 0 ? revenueStats[0].totalRevenue : 0;
+            if (dateRangeRevenue <= 0) {
+                return res.status(400).json({ success: false, message: 'No revenue found in the selected date range' });
+            }
+            // Cap it to available balance to prevent negative wallet
+            withdrawAmount = Math.min(dateRangeRevenue, realAvailableBalance);
+        } else if (amount) {
+            // Option 2: Custom Amount
+            withdrawAmount = Number(amount);
+        }
 
         if (withdrawAmount <= 0) {
             return res.status(400).json({ success: false, message: 'Wallet balance is empty or invalid amount' });

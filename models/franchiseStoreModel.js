@@ -48,6 +48,17 @@ const franchiseStoreSchema = new mongoose.Schema({
         type: String,
         default: ""
     },
+    gstin: {
+        type: String,
+        default: ""
+    },
+    bank_details: {
+        account_holder_name: { type: String, default: "" },
+        bank_name: { type: String, default: "" },
+        account_number: { type: String, default: "" },
+        ifsc_code: { type: String, default: "" },
+        branch_name: { type: String, default: "" }
+    },
     agreement_date: {
         type: Date
     },

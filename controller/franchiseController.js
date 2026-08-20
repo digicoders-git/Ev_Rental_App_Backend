@@ -94,7 +94,7 @@ exports.updateFranchiseProfile = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Franchise not found' });
         }
 
-        const { store_name, owner_name, mobile, address, city, state, latitude, longitude } = req.body;
+        const { store_name, owner_name, mobile, address, city, state, latitude, longitude, gstin, bank_details } = req.body;
 
         if (store_name) store.store_name = store_name;
         if (owner_name) store.owner_name = owner_name;
@@ -104,6 +104,20 @@ exports.updateFranchiseProfile = async (req, res) => {
         if (state) store.state = state;
         if (latitude !== undefined) store.latitude = latitude === '' ? null : Number(latitude);
         if (longitude !== undefined) store.longitude = longitude === '' ? null : Number(longitude);
+        if (gstin !== undefined) store.gstin = gstin;
+        
+        if (bank_details) {
+            try {
+                const parsedBankDetails = typeof bank_details === 'string' ? JSON.parse(bank_details) : bank_details;
+                store.bank_details = {
+                    ...store.bank_details,
+                    ...parsedBankDetails
+                };
+            } catch (e) {
+                // If it fails to parse, ignore or log
+                console.error("Failed to parse bank details:", e);
+            }
+        }
 
         if (req.file) {
             store.profile_image = `/uploads/franchise/${req.file.filename}`;
@@ -572,8 +586,8 @@ exports.getFranchiseHistory = async (req, res) => {
         const lifetimeServiceFee = Number((lifetimeTotalEarnings * SERVICE_FEE_PERCENT / 100).toFixed(2));
         const lifetimeNetEarnings = Number((lifetimeTotalEarnings - lifetimeServiceFee).toFixed(2));
 
-        // Dynamically calculate the actual Available Balance (Lifetime Net - Lifetime Withdrawn)
-        const calculatedBalance = lifetimeNetEarnings - totalWithdrawn;
+        // The UI should show the full wallet balance until the admin explicitly approves and deducts it.
+        const calculatedBalance = (store.wallet_balance || 0);
         const walletBalance = Number((calculatedBalance > 0 ? calculatedBalance : 0).toFixed(2));
 
         // Fetch list of recent bookings with user/vehicle details

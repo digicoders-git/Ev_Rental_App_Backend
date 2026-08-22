@@ -1,4 +1,4 @@
-﻿const Booking = require('../models/bookingModel');
+const Booking = require('../models/bookingModel');
 const { creditFranchiseWallet } = require('../utils/franchiseWalletHelper');
 const Vehicle = require('../models/vehicleModel');
 const RentalPlan = require('../models/planModel');

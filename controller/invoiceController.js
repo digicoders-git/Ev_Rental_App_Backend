@@ -1,4 +1,4 @@
-﻿const Invoice = require('../models/invoiceModel');
+const Invoice = require('../models/invoiceModel');
 const Booking = require('../models/bookingModel');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
@@ -339,10 +339,10 @@ exports.downloadInvoicePDF = async (req, res) => {
         doc.text('A/c No.', 35, botTop + 135); doc.text(': 120024164312', 105, botTop + 135);
         doc.text('Branch & IFSC', 35, botTop + 150); doc.text(': Alambagh Branch & CNRB0001258', 105, botTop + 150);
 
-        doc.rect(30, botTop + 170, 250, 50).strokeColor('#93c5fd').stroke();
+        doc.rect(30, botTop + 170, 250, 80).strokeColor('#93c5fd').stroke();
         doc.rect(30, botTop + 170, 80, 20).fill('#1e3a8a');
         doc.fillColor('#fff').font('Helvetica-Bold').text("Declaration :", 35, botTop + 176);
-        doc.fillColor('#475569').font('Helvetica').text('We declare that this invoice shows the actual price of the Services described and that all particulars are true and correct.', 35, botTop + 195, { width: 240 });
+        doc.fillColor('#475569').font('Helvetica').text('We declare that this invoice shows the actual price of the Services described and that all particulars are true and correct.', 35, botTop + 198, { width: 235 });
 
         // Bottom Right
         const rightX = 310;
@@ -387,20 +387,22 @@ exports.downloadInvoicePDF = async (req, res) => {
         doc.fontSize(10).font('Helvetica').text('for ', rightX, botTop + 210, { continued: true }).font('Helvetica-Bold').text('TRIS ELECTRIC', { align: 'center', width: rw });
         doc.fillColor('#1e3a8a').text('JUNGLEBAN ENTERPRISES', rightX, botTop + 225, { align: 'center', width: rw });
         
-        // Stamp Circle
-        doc.circle(rightX + rw/2, botTop + 270, 35).lineWidth(2).strokeColor('#1e3a8a').stroke();
-        doc.circle(rightX + rw/2, botTop + 270, 30).lineWidth(1).strokeColor('#1e3a8a').stroke();
+        // Stamp Circle — moved down so it doesn't overlap text above
+        doc.circle(rightX + rw/2, botTop + 310, 35).lineWidth(2).strokeColor('#1e3a8a').stroke();
+        doc.circle(rightX + rw/2, botTop + 310, 30).lineWidth(1).strokeColor('#1e3a8a').stroke();
         
         doc.save();
-        doc.translate(rightX + rw/2, botTop + 270);
+        doc.translate(rightX + rw/2, botTop + 310);
         doc.rotate(-20);
-        doc.fontSize(7).text('TRIS ELECTRIC', -25, -10, { width: 50, align: 'center' });
-        doc.text('JUNGLEBAN\nENTERPRISES', -25, 0, { width: 50, align: 'center' });
+        doc.fontSize(6).fillColor('#1e3a8a').font('Helvetica-Bold');
+        doc.text('TRIS ELECTRIC', -28, -20, { width: 56, align: 'center', lineBreak: false });
+        doc.text('JUNGLEBAN', -28, -7, { width: 56, align: 'center', lineBreak: false });
+        doc.text('ENTERPRISES', -28, 6, { width: 56, align: 'center', lineBreak: false });
         doc.restore();
 
-        doc.moveTo(rightX + 40, botTop + 325).lineTo(rightX + rw - 40, botTop + 325).dash(2, {space: 2}).strokeColor('#000').stroke();
+        doc.moveTo(rightX + 40, botTop + 360).lineTo(rightX + rw - 40, botTop + 360).dash(2, {space: 2}).strokeColor('#000').stroke();
         doc.undash();
-        doc.fillColor('#000').fontSize(10).font('Helvetica').text('Authorized signatory', rightX, botTop + 330, { align: 'center', width: rw });
+        doc.fillColor('#000').fontSize(10).font('Helvetica').text('Authorized signatory', rightX, botTop + 365, { align: 'center', width: rw });
 
         doc.end();
     } catch (error) {

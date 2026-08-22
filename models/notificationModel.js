@@ -19,6 +19,10 @@ const notificationSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    image_url: {
+        type: String,
+        default: null
+    },
     type: {
         type: String,
         enum: ['booking', 'kyc', 'enquiry', 'payment', 'system', 'broadcast'],

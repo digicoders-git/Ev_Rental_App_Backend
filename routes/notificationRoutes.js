@@ -9,6 +9,7 @@ const {
     getBroadcastHistory
 } = require('../controller/notificationController');
 const { protect, admin, anyProtect } = require('../middleware/authMiddleware');
+const upload = require('../middleware/uploadMiddleware');
 
 router.get('/', anyProtect, getNotifications);
 router.patch('/read-all', anyProtect, markAllRead);
@@ -17,6 +18,6 @@ router.delete('/:id', anyProtect, deleteNotification);
 
 // Admin only
 router.get('/broadcast-history', protect, admin, getBroadcastHistory);
-router.post('/broadcast', protect, admin, broadcastNotification);
+router.post('/broadcast', protect, admin, upload.single('image'), broadcastNotification);
 
 module.exports = router;

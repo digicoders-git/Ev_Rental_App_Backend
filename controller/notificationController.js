@@ -92,22 +92,49 @@ exports.deleteNotification = async (req, res) => {
 exports.broadcastNotification = async (req, res) => {
     try {
         const { title, message } = req.body;
-        
-        // Find all users
-        const users = await User.find({ role: 'user' });
-        
-        // In a real app, you'd use a background job, but for now:
+
+        if (!title || !message) {
+            return res.status(400).json({ success: false, message: 'Title and message are required' });
+        }
+
+        // Build image_url if an image was uploaded
+        let image_url = null;
+        if (req.file) {
+            const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5002}`;
+            image_url = `${baseUrl}/uploads/${req.file.filename}`;
+        }
+
+        // Find all active users
+        const users = await User.find({ role: 'user' }).select('_id fcm_token');
+
+        // Save DB notifications for all users
         const notifications = users.map(u => ({
             recipient: u._id,
             recipient_role: 'user',
             title,
             message,
+            image_url,
             type: 'broadcast'
         }));
 
         await Notification.insertMany(notifications);
 
-        res.status(200).json({ success: true, message: `Broadcast sent to ${users.length} users` });
+        // Send real-time FCM push notifications to all users with a valid token
+        const { sendPushNotification } = require('../utils/fcmHelper');
+        const fcmPayloadData = { type: 'broadcast' };
+        if (image_url) fcmPayloadData.image_url = image_url;
+
+        const pushPromises = users
+            .filter(u => u.fcm_token)
+            .map(u => sendPushNotification(u.fcm_token, title, message, fcmPayloadData));
+
+        await Promise.allSettled(pushPromises);
+
+        res.status(200).json({
+            success: true,
+            message: `Broadcast sent to ${users.length} users`,
+            push_sent: pushPromises.length
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -124,6 +151,7 @@ exports.getBroadcastHistory = async (req, res) => {
                 $group: {
                     _id: { title: "$title", message: "$message" },
                     createdAt: { $first: "$createdAt" },
+                    image_url: { $first: "$image_url" },
                     recipient_count: { $sum: 1 }
                 }
             },
@@ -135,6 +163,7 @@ exports.getBroadcastHistory = async (req, res) => {
             _id: h._id.title + h.createdAt,
             title: h._id.title,
             message: h._id.message,
+            image_url: h.image_url || null,
             createdAt: h.createdAt,
             recipient_count: h.recipient_count,
             type: 'broadcast',

@@ -471,7 +471,7 @@ exports.getAllReferrals = async (req, res) => {
     try {
         let referrals = await User.find({ referred_by: { $ne: null } })
             .populate('referred_by', 'name driver_id mobile')
-            .select('name mobile createdAt referred_by');
+            .select('name mobile createdAt referred_by has_active_ride');
             
         let referralData = await Promise.all(referrals.map(async (user) => {
             const latestBooking = await Booking.findOne({ user: user._id }).sort({ createdAt: -1 }).populate('franchise');
@@ -481,6 +481,7 @@ exports.getAllReferrals = async (req, res) => {
                 mobile: user.mobile,
                 date: user.createdAt,
                 referrer: user.referred_by,
+                has_active_ride: user.has_active_ride || false,
                 has_booking: !!latestBooking,
                 booking_date: latestBooking ? latestBooking.createdAt : null,
                 franchise_id: latestBooking && latestBooking.franchise ? latestBooking.franchise._id.toString() : null

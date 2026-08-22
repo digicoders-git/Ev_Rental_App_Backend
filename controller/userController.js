@@ -253,6 +253,13 @@ exports.getAllUsers = async (req, res) => {
             .lean()
             .sort({ createdAt: -1 });
 
+        const activeRideUsers = new Set();
+        allBookings.forEach(b => {
+            if (b.user && (b.booking_status === 'ongoing' || b.booking_status === 'confirmed')) {
+                activeRideUsers.add(b.user._id.toString());
+            }
+        });
+
         const uniqueUsersMap = {};
 
         // Loop through all bookings. Since they are sorted newest first,
@@ -267,6 +274,7 @@ exports.getAllUsers = async (req, res) => {
                     // Vehicle might be null if it was deleted, but we still attach it if available
                     userObj.assigned_vehicle = b.vehicle || null;
                     userObj.booking_date = b.createdAt; // Latest booking date
+                    userObj.has_active_ride = activeRideUsers.has(userIdStr);
                     
                     // Franchise details
                     let franchiseName = 'Main Branch';
@@ -304,6 +312,7 @@ exports.getAllUsers = async (req, res) => {
                     ...u,
                     assigned_vehicle: null,
                     booking_date: u.createdAt,
+                    has_active_ride: false,
                     franchise_name: 'Main Branch',
                     paid_amount: 0,
                     due_amount: 0,

@@ -97,6 +97,8 @@ exports.broadcastNotification = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Title and message are required' });
         }
 
+        console.log('Received broadcast request:', { title, message, file: req.file ? req.file.filename : 'none' });
+
         // Build image_url if an image was uploaded
         let image_url = null;
         if (req.file) {

@@ -1098,6 +1098,11 @@ exports.downloadReceipt = async (req, res) => {
         doc.text('ENTERPRISES', -28, 6, { width: 56, align: 'center', lineBreak: false });
         doc.restore();
 
+        const signaturePath = path.join(__dirname, '../assets/signature.png');
+        if (fs.existsSync(signaturePath)) {
+            doc.image(signaturePath, rightX + (rw/2) - 30, botTop + 275, { width: 60 });
+        }
+
         doc.moveTo(rightX + 40, botTop + 325).lineTo(rightX + rw - 40, botTop + 325).dash(2, {space: 2}).strokeColor('#000').stroke();
         doc.undash();
         doc.fillColor('#000').fontSize(10).font('Helvetica').text('Authorized signatory', rightX, botTop + 330, { align: 'center', width: rw });

@@ -2,6 +2,7 @@ const Invoice = require('../models/invoiceModel');
 const Booking = require('../models/bookingModel');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
+const path = require('path');
 
 // @desc    Get or Generate Invoice for a Booking
 // @route   GET /api/invoices/booking/:bookingId
@@ -399,6 +400,11 @@ exports.downloadInvoicePDF = async (req, res) => {
         doc.text('JUNGLEBAN', -28, -7, { width: 56, align: 'center', lineBreak: false });
         doc.text('ENTERPRISES', -28, 6, { width: 56, align: 'center', lineBreak: false });
         doc.restore();
+
+        const signaturePath = path.join(__dirname, '../assets/signature.png');
+        if (fs.existsSync(signaturePath)) {
+            doc.image(signaturePath, rightX + (rw/2) - 30, botTop + 315, { width: 60 });
+        }
 
         doc.moveTo(rightX + 40, botTop + 360).lineTo(rightX + rw - 40, botTop + 360).dash(2, {space: 2}).strokeColor('#000').stroke();
         doc.undash();

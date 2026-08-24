@@ -124,9 +124,12 @@ exports.broadcastNotification = async (req, res) => {
         const fcmPayloadData = { type: 'broadcast' };
         if (image_url) fcmPayloadData.image_url = image_url;
 
-        const pushPromises = users
-            .filter(u => u.fcm_token)
-            .map(u => sendPushNotification(u.fcm_token, title, message, fcmPayloadData));
+        // Deduplicate fcm_tokens to avoid sending multiple pushes to the same physical device
+        const uniqueTokens = [...new Set(users.map(u => u.fcm_token).filter(Boolean))];
+
+        const pushPromises = uniqueTokens.map(token => 
+            sendPushNotification(token, title, message, fcmPayloadData)
+        );
 
         await Promise.allSettled(pushPromises);
 

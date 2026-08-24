@@ -958,8 +958,7 @@ exports.downloadReceipt = async (req, res) => {
         doc.rect(30, tableTop, pageWidth - 60, 30).fill('#f8fafc').strokeColor('#000').lineWidth(1).stroke();
         
         doc.moveTo(70, tableTop).lineTo(70, tableTop + 30).stroke(); // SL NO
-        doc.moveTo(270, tableTop).lineTo(270, tableTop + 30).strok
-        e(); // DESC
+        doc.moveTo(270, tableTop).lineTo(270, tableTop + 30).stroke(); // DESC
         doc.moveTo(330, tableTop).lineTo(330, tableTop + 30).stroke(); // HSN
         doc.moveTo(390, tableTop).lineTo(390, tableTop + 30).stroke(); // QTY
         doc.moveTo(470, tableTop).lineTo(470, tableTop + 30).stroke(); // RATE

@@ -31,7 +31,7 @@ const sendPushNotification = async (fcmToken, title, body, data = {}) => {
                 priority: 'high',
                 notification: {
                     sound: 'default',
-                    channelId: 'ev_rental_payments',
+                    channelId: 'high_importance_channel',
                     ...(imageUrl ? { imageUrl } : {}),  // ← Android big picture style
                 },
             },

@@ -106,8 +106,14 @@ exports.broadcastNotification = async (req, res) => {
             image_url = `${baseUrl}/uploads/${req.file.filename}`;
         }
 
-        // Find all active users
-        const users = await User.find({ role: 'user' }).select('_id fcm_token');
+        // Find all active users with a valid fcm_token (including admins/franchises who use the app)
+        const users = await User.find({ 
+            fcm_token: { $exists: true, $ne: null, $ne: '' } 
+        }).select('_id fcm_token');
+
+        if (!users.length) {
+            return res.status(404).json({ success: false, message: 'No users found to send broadcast' });
+        }
 
         // Save DB notifications for all users
         const notifications = users.map(u => ({

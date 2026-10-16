@@ -10,7 +10,9 @@ const {
     getMyFranchiseVehicles,
     checkAvailability,
     createFranchiseVehicle,
-    updateVehicleStatus
+    updateVehicleStatus,
+    createBulkVehicles,
+    duplicateVehicle
 } = require('../controller/vehicleController');
 const { protect, admin, franchiseProtect, anyProtect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -34,6 +36,8 @@ router.get('/:id', getVehicleById);
 router.get('/:id/availability', checkAvailability);
 
 // Admin routes
+router.post('/bulk', protect, admin, uploadFields, createBulkVehicles);
+router.post('/:id/duplicate', protect, admin, duplicateVehicle);
 router.post('/', protect, admin, uploadFields, createVehicle);
 router.put('/:id', protect, admin, uploadFields, updateVehicle);
 router.delete('/:id', protect, admin, deleteVehicle);

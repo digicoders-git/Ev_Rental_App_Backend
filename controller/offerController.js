@@ -1,24 +1,33 @@
 const Offer = require('../models/offerModel');
 const User = require('../models/userModel');
 
-// @desc    Create new Offer
+// @desc    Create new Offer / Gift Card
 // @route   POST /api/offers
 // @access  Private/Admin
 exports.createOffer = async (req, res) => {
     try {
-        const offer = await Offer.create(req.body);
+        const data = { ...req.body };
+        if (data.is_one_time) {
+            data.usage_limit = 1;
+        }
+        const offer = await Offer.create(data);
         res.status(201).json({ success: true, data: offer });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
     }
 };
 
-// @desc    Get all Offers
+// @desc    Get all Offers (Filters out hidden gift cards for mobile app unless ?all=true)
 // @route   GET /api/offers
 // @access  Public
 exports.getAllOffers = async (req, res) => {
     try {
-        const offers = await Offer.find().sort('-createdAt');
+        const query = {};
+        // If not requested by admin with ?all=true, hide private gift cards from public app
+        if (req.query.all !== 'true' && req.query.include_hidden !== 'true') {
+            query.is_hidden = { $ne: true };
+        }
+        const offers = await Offer.find(query).sort('-createdAt');
         res.status(200).json({ success: true, count: offers.length, data: offers });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -45,7 +54,11 @@ exports.getOfferById = async (req, res) => {
 // @access  Private/Admin
 exports.updateOffer = async (req, res) => {
     try {
-        const offer = await Offer.findByIdAndUpdate(req.params.id, req.body, {
+        const data = { ...req.body };
+        if (data.is_one_time) {
+            data.usage_limit = 1;
+        }
+        const offer = await Offer.findByIdAndUpdate(req.params.id, data, {
             new: true,
             runValidators: true
         });
@@ -74,7 +87,7 @@ exports.deleteOffer = async (req, res) => {
     }
 };
 
-// @desc    Validate a Coupon Code
+// @desc    Validate a Coupon Code or Gift Card
 // @route   POST /api/offers/validate
 // @access  Private
 exports.validateCoupon = async (req, res) => {
@@ -82,23 +95,28 @@ exports.validateCoupon = async (req, res) => {
         const { code, amount, vehicle_id } = req.body;
         
         if (!code) {
-            return res.status(400).json({ success: false, message: 'Please provide a coupon code' });
+            return res.status(400).json({ success: false, message: 'Please provide a coupon or gift card code' });
         }
 
         const offer = await Offer.findOne({ 
-            coupon_code: code.toUpperCase(),
+            coupon_code: code.trim().toUpperCase(),
             status: 'active',
             start_date: { $lte: new Date() },
             end_date: { $gte: new Date() }
         });
 
         if (!offer) {
-            return res.status(404).json({ success: false, message: 'Coupon invalid or expired' });
+            return res.status(404).json({ success: false, message: 'Coupon / gift card is invalid or expired' });
         }
 
-        // Check usage limit
-        if (offer.usage_limit > 0 && offer.usage_count >= offer.usage_limit) {
-            return res.status(400).json({ success: false, message: 'Coupon usage limit reached' });
+        // Check one-time use or usage limit
+        if ((offer.usage_limit > 0 && offer.usage_count >= offer.usage_limit) || (offer.is_one_time && offer.usage_count >= 1)) {
+            return res.status(400).json({ success: false, message: 'This coupon/gift card has already been used' });
+        }
+
+        // Check if user already used this coupon
+        if (req.user && offer.used_by && offer.used_by.some(uid => uid.toString() === req.user._id.toString())) {
+            return res.status(400).json({ success: false, message: 'You have already redeemed this coupon/gift card' });
         }
 
         // Check minimum amount
@@ -129,9 +147,12 @@ exports.validateCoupon = async (req, res) => {
             message: 'Coupon applied successfully', 
             data: {
                 offer_id: offer._id,
+                coupon_code: offer.coupon_code,
                 discount_amount: discount,
-                final_amount: amount - discount,
-                title: offer.title
+                final_amount: Math.max(0, amount - discount),
+                title: offer.title,
+                is_one_time: offer.is_one_time,
+                is_hidden: offer.is_hidden
             } 
         });
     } catch (error) {

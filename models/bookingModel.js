@@ -46,6 +46,11 @@ const bookingSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    coupon_code: {
+        type: String,
+        trim: true,
+        default: null
+    },
     security_deposit: {
         type: Number,
         default: 0

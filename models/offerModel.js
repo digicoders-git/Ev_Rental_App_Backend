@@ -52,6 +52,18 @@ const offerSchema = new mongoose.Schema({
         enum: ['active', 'inactive', 'expired'],
         default: 'active'
     },
+    is_hidden: {
+        type: Boolean,
+        default: false // If true, not visible on mobile app public banners/offers
+    },
+    is_one_time: {
+        type: Boolean,
+        default: false // If true, one-time use coupon/gift card
+    },
+    used_by: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
     description: {
         type: String
     }

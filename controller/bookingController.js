@@ -200,6 +200,7 @@ exports.createBooking = async (req, res) => {
             total_amount,
             gst_amount,
             discount_amount,
+            coupon_code: req.body.coupon_code ? req.body.coupon_code.trim().toUpperCase() : null,
             security_deposit,
             grand_total,
             total_paid: initial_total_paid,
@@ -210,6 +211,27 @@ exports.createBooking = async (req, res) => {
             payment_installments,
             auto_renew: true // Defaulted to true so auto-renew works automatically
         });
+
+        // Record offer/gift card redemption
+        if (req.body.coupon_code) {
+            try {
+                const Offer = require('../models/offerModel');
+                const appliedOffer = await Offer.findOne({ coupon_code: req.body.coupon_code.trim().toUpperCase() });
+                if (appliedOffer) {
+                    appliedOffer.usage_count = (appliedOffer.usage_count || 0) + 1;
+                    appliedOffer.used_by = appliedOffer.used_by || [];
+                    if (bookingUserId && !appliedOffer.used_by.some(uid => uid.toString() === bookingUserId.toString())) {
+                        appliedOffer.used_by.push(bookingUserId);
+                    }
+                    if (appliedOffer.usage_limit > 0 && appliedOffer.usage_count >= appliedOffer.usage_limit) {
+                        appliedOffer.status = 'expired';
+                    }
+                    await appliedOffer.save();
+                }
+            } catch (couponErr) {
+                console.error('Error updating coupon usage:', couponErr);
+            }
+        }
 
         if (payment_method === 'wallet') {
             await WalletTransaction.create({

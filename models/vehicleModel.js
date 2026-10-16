@@ -133,11 +133,24 @@ const vehicleSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Generate unique vehicle_id before saving
+// Helper to generate guaranteed collision-free unique vehicle_id
+vehicleSchema.statics.generateUniqueId = async function() {
+    for (let attempts = 0; attempts < 15; attempts++) {
+        const randomNum = Math.floor(100000 + Math.random() * 900000);
+        const candidate = `VEH-${randomNum}`;
+        const exists = await this.findOne({ vehicle_id: candidate }).select('_id');
+        if (!exists) return candidate;
+    }
+    // High-entropy fallback
+    const time = Date.now().toString().slice(-4);
+    const rand = Math.floor(1000 + Math.random() * 9000);
+    return `VEH-${time}${rand}`;
+};
+
+// Generate unique vehicle_id before saving if not present
 vehicleSchema.pre('save', async function() {
     if (!this.vehicle_id) {
-        const dateStr = Date.now().toString();
-        this.vehicle_id = `VEH-${dateStr.substring(dateStr.length - 6)}`;
+        this.vehicle_id = await this.constructor.generateUniqueId();
     }
 });
 

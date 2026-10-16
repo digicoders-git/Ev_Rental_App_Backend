@@ -2,6 +2,8 @@ const Vehicle = require('../models/vehicleModel');
 const fs = require('fs');
 const path = require('path');
 
+const escapeRegex = (str) => String(str || '').replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+
 // Helper to delete files
 const deleteFile = (filePath) => {
     if (filePath) {
@@ -117,6 +119,12 @@ exports.getAllVehicles = async (req, res) => {
                 vObj.submission_date = null;
                 vObj.submission_status = vObj.is_busy ? 'On Ride' : (vObj.status === 'active' ? 'Available' : vObj.status);
             }
+
+            if (vObj.thumbnail_image) {
+                vObj.thumbnail_image = vObj.thumbnail_image.replace(/\\/g, '/').replace(/^\/+/, '');
+                vObj.thumbnail_url = encodeURI(vObj.thumbnail_image);
+            }
+
             return vObj;
         });
 
@@ -498,5 +506,195 @@ exports.updateVehicleStatus = async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Bulk create EVs (1-click duplicate fleet creation)
+// @route   POST /api/vehicles/bulk
+// @access  Private/Admin
+exports.createBulkVehicles = async (req, res) => {
+    try {
+        const data = { ...req.body };
+        const quantity = Math.max(1, Math.min(parseInt(data.quantity) || 1, 500));
+
+        // Handle File Uploads once
+        if (req.files) {
+            if (req.files.thumbnail_image) {
+                data.thumbnail_image = `uploads/${req.files.thumbnail_image[0].filename}`;
+            }
+            if (req.files.images) {
+                data.images = req.files.images.map(file => `uploads/${file.filename}`);
+            }
+            if (req.files.rc_document) {
+                data.rc_document = `uploads/${req.files.rc_document[0].filename}`;
+            }
+        }
+
+        if (typeof data.features === 'string') {
+            data.features = data.features.split(',').map(f => f.trim()).filter(Boolean);
+        }
+
+        const baseRegNo = (data.registration_number || 'EV').trim();
+        const baseVehicleName = (data.vehicle_name || 'EV').trim();
+
+        // Check if base registration number ends with digits (e.g. KA01XX1000)
+        const match = baseRegNo.match(/^(.*?)(\d+)$/);
+        let prefix = baseRegNo;
+        let startNum = 1;
+        let padLength = 3;
+
+        if (match) {
+            prefix = match[1];
+            startNum = parseInt(match[2], 10);
+            padLength = match[2].length;
+        } else {
+            prefix = `${baseRegNo}-`;
+        }
+
+        // Query existing reg numbers to guarantee uniqueness
+        const existingDocs = await Vehicle.find({
+            registration_number: new RegExp(`^${escapeRegex(prefix)}`, 'i')
+        }).select('registration_number');
+        const existingRegs = new Set(existingDocs.map(v => (v.registration_number || '').toUpperCase()));
+
+        const createdVehicles = [];
+        let currentNum = startNum;
+
+        for (let i = 0; i < quantity; i++) {
+            let uniqueReg = '';
+            if (i === 0 && !existingRegs.has(baseRegNo.toUpperCase()) && quantity === 1) {
+                uniqueReg = baseRegNo;
+                existingRegs.add(uniqueReg.toUpperCase());
+            } else {
+                while (true) {
+                    const formattedNum = String(currentNum).padStart(padLength, '0');
+                    const candidate = `${prefix}${formattedNum}`;
+                    currentNum++;
+                    if (!existingRegs.has(candidate.toUpperCase())) {
+                        uniqueReg = candidate;
+                        existingRegs.add(candidate.toUpperCase());
+                        break;
+                    }
+                }
+            }
+
+            const uniqueVehicleId = await Vehicle.generateUniqueId();
+
+            const vehicleDoc = {
+                ...data,
+                vehicle_name: baseVehicleName,
+                registration_number: uniqueReg,
+                vehicle_id: uniqueVehicleId,
+                status: data.status || 'active',
+                current_battery: data.current_battery !== undefined ? Number(data.current_battery) : 100,
+                price_per_day: data.price_per_day !== undefined ? Number(data.price_per_day) : 0,
+            };
+
+            delete vehicleDoc.quantity;
+            delete vehicleDoc._id;
+
+            createdVehicles.push(vehicleDoc);
+        }
+
+        const savedVehicles = await Vehicle.insertMany(createdVehicles);
+
+        if (req.app.get('io')) {
+            req.app.get('io').emit('admin_data_changed');
+        }
+
+        res.status(201).json({
+            success: true,
+            count: savedVehicles.length,
+            message: `Successfully created ${savedVehicles.length} vehicles`,
+            data: savedVehicles
+        });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Duplicate an existing vehicle N times
+// @route   POST /api/vehicles/:id/duplicate
+// @access  Private/Admin
+exports.duplicateVehicle = async (req, res) => {
+    try {
+        const sourceVehicle = await Vehicle.findById(req.params.id);
+        if (!sourceVehicle) {
+            return res.status(404).json({ success: false, message: 'Source vehicle not found' });
+        }
+
+        const quantity = Math.max(1, Math.min(parseInt(req.body.quantity) || 1, 500));
+        const customFranchise = req.body.franchise !== undefined ? req.body.franchise : sourceVehicle.franchise;
+        const customLocation = req.body.location || sourceVehicle.current_location?.address || '';
+
+        const baseRegNo = (req.body.registration_number || sourceVehicle.registration_number || 'EV').trim();
+        const match = baseRegNo.match(/^(.*?)(\d+)$/);
+        let prefix = baseRegNo;
+        let startNum = 1;
+        let padLength = 3;
+
+        if (match) {
+            prefix = match[1];
+            startNum = parseInt(match[2], 10) + 1;
+            padLength = match[2].length;
+        } else {
+            prefix = `${baseRegNo}-`;
+        }
+
+        const existingDocs = await Vehicle.find({
+            registration_number: new RegExp(`^${escapeRegex(prefix)}`, 'i')
+        }).select('registration_number');
+        const existingRegs = new Set(existingDocs.map(v => (v.registration_number || '').toUpperCase()));
+
+        let currentNum = startNum;
+        const newVehicles = [];
+
+        const sourceData = sourceVehicle.toObject();
+        delete sourceData._id;
+        delete sourceData.createdAt;
+        delete sourceData.updatedAt;
+        delete sourceData.__v;
+
+        for (let i = 0; i < quantity; i++) {
+            let uniqueReg = '';
+            while (true) {
+                const formattedNum = String(currentNum).padStart(padLength, '0');
+                const candidate = `${prefix}${formattedNum}`;
+                currentNum++;
+                if (!existingRegs.has(candidate.toUpperCase())) {
+                    uniqueReg = candidate;
+                    existingRegs.add(candidate.toUpperCase());
+                    break;
+                }
+            }
+
+            const uniqueVehicleId = await Vehicle.generateUniqueId();
+            newVehicles.push({
+                ...sourceData,
+                registration_number: uniqueReg,
+                vehicle_id: uniqueVehicleId,
+                franchise: customFranchise || null,
+                current_location: {
+                    ...sourceData.current_location,
+                    address: customLocation || sourceData.current_location?.address || ''
+                },
+                status: 'active'
+            });
+        }
+
+        const saved = await Vehicle.insertMany(newVehicles);
+
+        if (req.app.get('io')) {
+            req.app.get('io').emit('admin_data_changed');
+        }
+
+        res.status(201).json({
+            success: true,
+            count: saved.length,
+            message: `Successfully duplicated ${saved.length} vehicles`,
+            data: saved
+        });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
     }
 };

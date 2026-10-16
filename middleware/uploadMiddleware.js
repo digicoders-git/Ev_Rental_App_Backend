@@ -13,8 +13,12 @@ const storage = multer.diskStorage({
     destination: function (req,file,cb) {
         cb(null, uploadDir);
     },
-    filename: function (req,file,cb) {
-        cb(null, `${Date.now()}-${file.originalname}`);
+    filename: function (req, file, cb) {
+        const sanitized = (file.originalname || 'file')
+            .trim()
+            .replace(/\s+/g, '_')
+            .replace(/[^a-zA-Z0-9._-]/g, '');
+        cb(null, `${Date.now()}-${sanitized}`);
     }
 });
 

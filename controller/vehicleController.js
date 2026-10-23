@@ -655,6 +655,11 @@ exports.duplicateVehicle = async (req, res) => {
         delete sourceData.updatedAt;
         delete sourceData.__v;
 
+        let finalThumbnail = sourceData.thumbnail_image;
+        if (req.files && req.files.thumbnail_image && req.files.thumbnail_image[0]) {
+            finalThumbnail = `uploads/${req.files.thumbnail_image[0].filename}`;
+        }
+
         for (let i = 0; i < quantity; i++) {
             let uniqueReg = '';
             while (true) {
@@ -671,6 +676,7 @@ exports.duplicateVehicle = async (req, res) => {
             const uniqueVehicleId = await Vehicle.generateUniqueId();
             newVehicles.push({
                 ...sourceData,
+                thumbnail_image: finalThumbnail,
                 registration_number: uniqueReg,
                 vehicle_id: uniqueVehicleId,
                 franchise: customFranchise || null,
@@ -693,6 +699,66 @@ exports.duplicateVehicle = async (req, res) => {
             count: saved.length,
             message: `Successfully duplicated ${saved.length} vehicles`,
             data: saved
+        });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Bulk update vehicle photo for selected vehicles, model, or all missing
+// @route   POST /api/vehicles/bulk-update-photo
+// @access  Private/Admin
+exports.bulkUpdateVehiclePhoto = async (req, res) => {
+    try {
+        if (!req.files || !req.files.thumbnail_image || !req.files.thumbnail_image[0]) {
+            return res.status(400).json({ success: false, message: 'Please select a photo to upload' });
+        }
+        const newThumbnail = `uploads/${req.files.thumbnail_image[0].filename}`;
+
+        let filter = {};
+        const { vehicle_ids, vehicle_name, category, franchise, all_missing } = req.body;
+
+        if (vehicle_ids) {
+            let ids = [];
+            if (Array.isArray(vehicle_ids)) {
+                ids = vehicle_ids;
+            } else if (typeof vehicle_ids === 'string') {
+                try {
+                    ids = JSON.parse(vehicle_ids);
+                } catch (e) {
+                    ids = vehicle_ids.split(',').map(s => s.trim()).filter(Boolean);
+                }
+            }
+            if (ids.length > 0) {
+                filter._id = { $in: ids };
+            }
+        } else if (vehicle_name) {
+            filter.vehicle_name = vehicle_name;
+        } else if (category) {
+            filter.category = category;
+        } else if (franchise) {
+            filter.franchise = franchise;
+        } else if (all_missing === 'true' || all_missing === true) {
+            filter.$or = [
+                { thumbnail_image: { $exists: false } },
+                { thumbnail_image: null },
+                { thumbnail_image: '' }
+            ];
+        }
+
+        const result = await Vehicle.updateMany(filter, {
+            $set: { thumbnail_image: newThumbnail }
+        });
+
+        if (req.app.get('io')) {
+            req.app.get('io').emit('admin_data_changed');
+        }
+
+        res.status(200).json({
+            success: true,
+            count: result.modifiedCount,
+            message: `Successfully updated photo for ${result.modifiedCount} vehicles!`,
+            thumbnail_image: newThumbnail
         });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });

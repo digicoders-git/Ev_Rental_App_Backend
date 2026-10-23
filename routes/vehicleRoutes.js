@@ -12,7 +12,8 @@ const {
     createFranchiseVehicle,
     updateVehicleStatus,
     createBulkVehicles,
-    duplicateVehicle
+    duplicateVehicle,
+    bulkUpdateVehiclePhoto
 } = require('../controller/vehicleController');
 const { protect, admin, franchiseProtect, anyProtect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -32,12 +33,14 @@ router.get('/franchise/my', franchiseProtect, getMyFranchiseVehicles);
 router.post('/franchise/create', franchiseProtect, uploadFields, createFranchiseVehicle);
 router.put('/franchise/:id', franchiseProtect, uploadFields, updateVehicle);
 
+// Admin routes for bulk operations (must be before :id routes)
+router.post('/bulk', protect, admin, uploadFields, createBulkVehicles);
+router.post('/bulk-update-photo', protect, admin, uploadFields, bulkUpdateVehiclePhoto);
+
 router.get('/:id', getVehicleById);
 router.get('/:id/availability', checkAvailability);
 
-// Admin routes
-router.post('/bulk', protect, admin, uploadFields, createBulkVehicles);
-router.post('/:id/duplicate', protect, admin, duplicateVehicle);
+router.post('/:id/duplicate', protect, admin, uploadFields, duplicateVehicle);
 router.post('/', protect, admin, uploadFields, createVehicle);
 router.put('/:id', protect, admin, uploadFields, updateVehicle);
 router.delete('/:id', protect, admin, deleteVehicle);

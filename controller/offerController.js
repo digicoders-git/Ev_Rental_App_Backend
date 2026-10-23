@@ -10,6 +10,17 @@ exports.createOffer = async (req, res) => {
         if (data.is_one_time) {
             data.usage_limit = 1;
         }
+        if (!data.title && data.coupon_code) {
+            data.title = `${data.coupon_code} Discount`;
+        }
+        if (!data.start_date) {
+            data.start_date = new Date();
+        }
+        if (!data.end_date) {
+            const d = new Date();
+            d.setDate(d.getDate() + 30);
+            data.end_date = d;
+        }
         const offer = await Offer.create(data);
         res.status(201).json({ success: true, data: offer });
     } catch (error) {

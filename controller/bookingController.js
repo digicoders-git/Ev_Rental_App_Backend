@@ -105,13 +105,33 @@ exports.createBooking = async (req, res) => {
             calculatedTotal = planData.price * (months > 0 ? months : 1);
         }
 
-        // If frontend didn't pass total_amount, or passed the base unit price by mistake, use the fully calculated dynamic total
-        let plan_price_inclusive = req.body.total_amount !== undefined ? req.body.total_amount : calculatedTotal;
-        if (plan_price_inclusive == planData.price && calculatedTotal > planData.price) {
-            plan_price_inclusive = calculatedTotal;
+        // If installmentsCount was passed and greater than calculated units
+        if (req.body.installmentsCount && Number(req.body.installmentsCount) > 1) {
+            const count = Number(req.body.installmentsCount);
+            if (calculatedTotal < planData.price * count) {
+                calculatedTotal = planData.price * count;
+            }
         }
+
         const security_deposit = req.body.security_deposit !== undefined ? Number(req.body.security_deposit) : 0;
-        const discount_amount = req.body.discount_amount || 0;
+        const discount_amount = Number(req.body.discount_amount) || 0;
+
+        // Determine the true gross rent (inclusive of 5% GST, before coupon discount)
+        let plan_price_inclusive = calculatedTotal;
+        if (req.body.total_amount !== undefined) {
+            const sentTotal = Number(req.body.total_amount);
+            // If the client passed an already discounted total (e.g. sentTotal ≈ calculatedTotal - discount_amount),
+            // recover the true gross plan price so the discount is not subtracted twice!
+            if (discount_amount > 0 && Math.abs(sentTotal - (calculatedTotal - discount_amount)) <= 2) {
+                plan_price_inclusive = calculatedTotal;
+            } else if (sentTotal >= calculatedTotal) {
+                plan_price_inclusive = sentTotal;
+            } else if (discount_amount > 0 && sentTotal < calculatedTotal) {
+                plan_price_inclusive = sentTotal + discount_amount;
+            } else if (sentTotal > 0 && discount_amount === 0) {
+                plan_price_inclusive = sentTotal;
+            }
+        }
         
         // Rent includes 5% GST
         const base_rent = Number((plan_price_inclusive / 1.05).toFixed(2));
@@ -120,7 +140,7 @@ exports.createBooking = async (req, res) => {
         const total_amount = base_rent;
         const gst_amount = req.body.gst_amount !== undefined ? req.body.gst_amount : calculated_gst;
         
-        // grand_total = what Flutter sent as total_amount + security_deposit (only if explicitly passed) - discount
+        // grand_total = gross rent + security deposit - discount
         const grand_total = Math.round(plan_price_inclusive + security_deposit - discount_amount);
 
         let creatorName = req.user ? (req.user.name || 'User') : 'Franchise/Admin';

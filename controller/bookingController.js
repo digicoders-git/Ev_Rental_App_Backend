@@ -2264,15 +2264,19 @@ exports.payAllInstallmentsWithWallet = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Not authorized' });
         }
 
-        const pendingInsts = booking.payment_installments.filter(i => i.status !== 'paid');
-        if (pendingInsts.length === 0) {
+        const pendingInsts = (booking.payment_installments || []).filter(i => i.status !== 'paid');
+
+        let instSum = 0;
+        pendingInsts.forEach(inst => {
+            instSum += (inst.amount || 0) + (inst.late_fee || 0);
+        });
+
+        const overallDue = Math.max(0, Math.round((booking.grand_total || 0) - (booking.total_paid || 0)));
+        const totalAmountToPay = Math.max(instSum, overallDue);
+
+        if (totalAmountToPay <= 0) {
             return res.status(400).json({ success: false, message: 'No pending dues to clear' });
         }
-
-        let totalAmountToPay = 0;
-        pendingInsts.forEach(inst => {
-            totalAmountToPay += (inst.amount || 0) + (inst.late_fee || 0);
-        });
 
         const user = await User.findById(userId);
         if (user.wallet_balance < totalAmountToPay) {
@@ -2353,15 +2357,19 @@ exports.initiateAllInstallmentsOnline = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Not authorized' });
         }
 
-        const pendingInsts = booking.payment_installments.filter(i => i.status !== 'paid');
-        if (pendingInsts.length === 0) {
+        const pendingInsts = (booking.payment_installments || []).filter(i => i.status !== 'paid');
+
+        let instSum = 0;
+        pendingInsts.forEach(inst => {
+            instSum += (inst.amount || 0) + (inst.late_fee || 0);
+        });
+
+        const overallDue = Math.max(0, Math.round((booking.grand_total || 0) - (booking.total_paid || 0)));
+        const totalAmountToPay = Math.max(instSum, overallDue);
+
+        if (totalAmountToPay <= 0) {
             return res.status(400).json({ success: false, message: 'No pending dues to clear' });
         }
-
-        let totalAmountToPay = 0;
-        pendingInsts.forEach(inst => {
-            totalAmountToPay += (inst.amount || 0) + (inst.late_fee || 0);
-        });
 
         const amountInPaise = Math.round(totalAmountToPay * 100);
 
@@ -2475,20 +2483,24 @@ exports.verifyAllInstallmentsOnline = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid payment signature' });
         }
 
-        const pendingInsts = booking.payment_installments.filter(i => i.status !== 'paid');
-        let totalAmountPaid = 0;
+        const pendingInsts = (booking.payment_installments || []).filter(i => i.status !== 'paid');
+        let instSum = 0;
 
         const now = new Date();
         pendingInsts.forEach(inst => {
             const amountPaid = inst.amount + (inst.late_fee || 0);
-            totalAmountPaid += amountPaid;
+            instSum += amountPaid;
             inst.status = 'paid';
             inst.paid_date = now;
             inst.payment_method = 'online';
             inst.transaction_id = razorpay_payment_id;
         });
 
+        const overallDue = Math.max(0, Math.round((booking.grand_total || 0) - (booking.total_paid || 0)));
+        const totalAmountPaid = Math.max(instSum, overallDue);
+
         booking.total_paid += totalAmountPaid;
+        booking.payment_method = 'online';
         if (booking.total_paid >= booking.grand_total) {
             booking.payment_status = 'paid';
         } else if (booking.total_paid > 0) {
@@ -2499,6 +2511,21 @@ exports.verifyAllInstallmentsOnline = async (req, res) => {
 
         const { creditFranchiseWallet } = require('../utils/franchiseWalletHelper');
         await creditFranchiseWallet(booking._id, totalAmountPaid);
+
+        // Generate Invoice for combined dues
+        const count = await Invoice.countDocuments();
+        const invNumber = `INV-${new Date().getFullYear()}-${String(count + 1).padStart(5, '0')}`;
+        await Invoice.create({
+            invoice_number: invNumber,
+            booking: booking._id,
+            user: booking.user,
+            franchise: booking.franchise,
+            amount: totalAmountPaid,
+            gst_amount: 0,
+            discount_amount: 0,
+            total_amount: totalAmountPaid,
+            status: 'paid'
+        });
 
         res.status(200).json({
             success: true,

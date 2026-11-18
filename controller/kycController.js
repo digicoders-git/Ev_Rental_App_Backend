@@ -187,7 +187,13 @@ exports.updateKYCStatus = async (req, res) => {
             if (status === 'approved') {
                 user.credit_score += 50;
                 if (kyc.name) user.name = kyc.name;
-                if (kyc.mobileNumber) user.mobile = kyc.mobileNumber;
+                // Only update user.mobile if kyc.mobileNumber is provided, different, and not already used by another user
+                if (kyc.mobileNumber && kyc.mobileNumber !== user.mobile) {
+                    const existingMobileUser = await User.findOne({ mobile: kyc.mobileNumber, _id: { $ne: user._id } });
+                    if (!existingMobileUser) {
+                        user.mobile = kyc.mobileNumber;
+                    }
+                }
             }
             await user.save();
 
@@ -347,7 +353,13 @@ exports.franchiseUpdateKYCStatus = async (req, res) => {
             if (status === 'approved') {
                 user.credit_score = (user.credit_score || 0) + 50;
                 if (kyc.name) user.name = kyc.name;
-                if (kyc.mobileNumber) user.mobile = kyc.mobileNumber;
+                // Only update user.mobile if kyc.mobileNumber is provided, different, and not already used by another user
+                if (kyc.mobileNumber && kyc.mobileNumber !== user.mobile) {
+                    const existingMobileUser = await User.findOne({ mobile: kyc.mobileNumber, _id: { $ne: user._id } });
+                    if (!existingMobileUser) {
+                        user.mobile = kyc.mobileNumber;
+                    }
+                }
             }
             await user.save();
 
